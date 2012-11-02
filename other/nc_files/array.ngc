@@ -1,0 +1,85 @@
+N1 G17 G20 G40 G49 S10
+N2 G80 G91 
+N3 G92 X0 Y0 (SET CURRENT POSITION TO ZERO)
+N4 G64 P0.005
+N6 M102 P20 (LASER POWER)
+
+(STEP 1)
+O103 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O103 endrepeat
+G90 (Absolute mode)
+G0 X.0 Y0 (move to X=0)
+
+
+(STEP 2)
+G91 (Relative mode)
+G0 X.0 Y.1 (bump it higher)
+O104 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O104 endrepeat
+G90 (Absolute mode)
+G0 X.0 Y.1 (move to X=0)
+
+(STEP 3)
+G91 (Relative mode)
+G0 X.0 Y.1 (bump it higher)
+O105 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O105 endrepeat
+G90 (Absolute mode)
+G0 X0 Y.2 (move to X=0)
+
+(STEP 4)
+G91 (Relative mode)
+G0 X.0 Y.1 (bump it higher)
+O106 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O106 endrepeat
+G90 (Absolute mode)
+G0 X0 Y.3 (move to X=0)
+
+(STEP 5)
+G91 (Relative mode)
+G0 X.0 Y.1 (bump it higher)
+O107 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O107 endrepeat
+G90 (Absolute mode)
+G0 X0 Y.4 (move to X=0)
+
+(STEP 6)
+G91 (Relative mode)
+G0 X.0 Y.1 (bump it higher)
+O108 repeat [20]
+M64 P2 (LASER ON)
+G4 P0.008
+M65 P2 (LASER OFF)
+G4 P0.5
+G0 X.1 Y0 (move to next position)
+O108 endrepeat
+
+(TRUNDLE HOME)
+G90 (Absolute mode)
+G00 X0.0 Y0.0 F10
+M2

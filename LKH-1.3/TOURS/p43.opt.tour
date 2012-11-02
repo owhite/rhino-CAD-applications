@@ -1,0 +1,50 @@
+NAME : p43.tour
+COMMENT : Optimum tour for p43.tsp (Length 5620)
+TYPE : TOUR
+DIMENSION : 43
+TOUR_SECTION  
+37
+38
+39
+40
+43
+41
+42
+27
+26
+25
+22
+24
+23
+36
+1
+5
+17
+20
+21
+19
+18
+16
+15
+14
+13
+35
+34
+33
+32
+12
+10
+9
+11
+8
+7
+6
+30
+31
+29
+28
+2
+4
+3
+-1
+EOF

@@ -1,0 +1,17 @@
+
+net bit1 pyvcp.estop_reset_button => pyvcp.led-sample1 parport.0.pin-02-out
+
+unlinkp parport.0.pin-02-out 
+setp parport.0.pin-02-out FALSE
+
+unlinkp parport.0.pin-03-out 
+setp parport.0.pin-03-out FALSE
+
+unlinkp parport.0.pin-04-out 
+setp parport.0.pin-04-out FALSE
+
+unlinkp parport.0.pin-05-out 
+setp parport.0.pin-05-out FALSE
+
+unlinkp parport.0.pin-06-out 
+setp parport.0.pin-06-out FALSE

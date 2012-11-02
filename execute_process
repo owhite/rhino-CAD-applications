@@ -1,0 +1,37 @@
+#!/usr/bin/python
+import multiprocessing
+import hal
+import time
+
+def run_process():
+    ## kind of a silly thing for now
+    c['program-is-running'] = False
+    time.sleep(2)
+    # print("subprocess done sleeping")
+
+if __name__ == '__main__':
+    c = hal.component("execute_process")
+    c.newpin("exec_activate", hal.HAL_BIT, hal.HAL_IN)
+    c.newpin("program-is-running", hal.HAL_BIT, hal.HAL_OUT)
+    c.ready()
+
+    c['program-is-running'] = True
+
+    try:
+        while 1:
+            c['program-is-running'] = True
+            # time.sleep(1) is this needed?
+            input = c['exec_activate']
+            if input == True:
+                time.sleep(.2) # debounce
+                foo = multiprocessing.Process(name='daemon', target=run_process)
+                foo.start()
+            # keep checking whether the subprocess is done, doing something each
+            # time.  else you could just wait()
+                while ( foo.is_alive() ):
+                    # print("foo appears to still be running ...")
+                # the subprocess has finished...
+                    time.sleep(.01)
+
+    except KeyboardInterrupt:
+        raise SystemExit

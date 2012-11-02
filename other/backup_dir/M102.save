@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# this is highly dependent on signals being set up in a .hal file
+#  e.g., 
+# newsig PWM1-bit bit
+# and a pin called pyvcp.power-meter
+
+echo "M102 $@"
+
+sets () { if [ $2 -eq 0 ]; then halcmd sets $1 0; else halcmd sets $1 1; fi }
+
+val=${1%.*}
+
+echo $((val & 1))
+echo $((val & 2))
+echo $((val & 4))
+echo $((val & 8))
+echo $((val & 16))
+echo $((val & 32))
+
+halcmd setp pyvcp.power-meter $val
+
+sets PWM1-bit $((val & 1))
+sets PWM2-bit $((val & 2))
+sets PWM3-bit $((val & 4))
+sets PWM4-bit $((val & 8))
+sets PWM5-bit $((val & 16))
+sets PWM6-bit $((val & 32))

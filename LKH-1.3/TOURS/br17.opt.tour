@@ -1,0 +1,24 @@
+NAME : br17.tour
+COMMENT : Optimum tour for br17.tsp (Length 39)
+TYPE : TOUR
+DIMENSION : 17
+TOUR_SECTION  
+6
+15
+16
+5
+4
+8
+17
+9
+1
+12
+3
+14
+10
+11
+2
+13
+7
+-1
+EOF

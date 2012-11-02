@@ -1,0 +1,34 @@
+
+# location of the python program
+/usr/bin/axis
+
+# location of the tcl frameworkf for axis:
+/usr/share/axis/tcl/axis.tcl
+
+# location of icons that go into axis
+/usr/share/axis/images/*
+
+# location of an init file that is needed by axis:
+/home/remastersys/emc2/configs/sim/axis.ini
+
+# a perl program that gets launched in axis.tcl
+/usr/bin/toolpath.pl
+
+# location of modules read by toolpath.pl
+/usr/lib/perl/5.8/gcode_write.pm
+
+
+# to run axis:
+> cd /home/remastersys/emc2/configs/sim
+> emc axis.ini
+
+in the menu:
+
+machine->Fetch rhino
+
+another popup window launches:
+which has the command: "toolpath.pl -c -t" in a little command line window
+
+hit the "Run it" button to see it work
+
+

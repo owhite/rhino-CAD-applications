@@ -1,0 +1,42 @@
+loadusr -Wn iotest pyvcp -c iotest iotest.xml
+
+# load the m5i20 driver
+loadrt hal_m5i20
+
+# update digital inputs
+addf m5i20.0.digital-in-read servo-thread 1
+
+# update digital outputs
+addf m5i20.0.digital-out-write servo-thread 1
+
+# misc update ? required to update onboard LEDs (at least...)
+addf m5i20.0.misc-update servo-thread 1
+
+# update encoder counters
+addf m5i20.0.encoder-read servo-thread 1
+
+# update DACs and DAC-enable
+addf m5i20.0.dac-write servo-thread 1
+
+# IO
+# Link digital inputs to LEDs
+linkpp iotest.in26     m5i20.0.in-26-not
+linkpp iotest.in27     m5i20.0.in-27
+linkpp iotest.in28     m5i20.0.in-28
+linkpp iotest.in29     m5i20.0.in-29
+linkpp iotest.in30     m5i20.0.in-30
+linkpp iotest.in31     m5i20.0.in-31-not
+
+# link digital outputs to buttons
+
+setp m5i20.0.out-15-invert FALSE
+
+linkpp iotest.out15 m5i20.0.out-15
+linkpp iotest.out14 m5i20.0.out-14
+linkpp iotest.out13 m5i20.0.out-13
+linkpp iotest.out12 m5i20.0.out-12
+linkpp iotest.out11 m5i20.0.out-11
+linkpp iotest.out10 m5i20.0.out-10
+linkpp iotest.out9  m5i20.0.out-09
+linkpp iotest.out8  m5i20.0.out-08
+

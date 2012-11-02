@@ -1,0 +1,43 @@
+NAME : ftv35.tour
+COMMENT : Optimum tour for ftv35.tsp (Length 1473)
+TYPE : TOUR
+DIMENSION : 36
+TOUR_SECTION  
+27
+2
+4
+1
+14
+13
+7
+8
+6
+35
+9
+10
+12
+15
+16
+17
+26
+25
+18
+11
+34
+19
+20
+21
+22
+23
+24
+28
+29
+30
+32
+36
+3
+5
+33
+31
+-1
+EOF

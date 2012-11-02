@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+
+# this is highly dependent on signals being set up in a .hal file
+#  e.g., 
+# newsig PWM1-bit bit
+# and a pin called pyvcp.power-meter
+# 
+# remember this should live in:
+# # Prefix to be used
+# PROGRAM_PREFIX =        /usr/share/emc/ncfiles
+
+
+use strict; 
+
+my $input = $ARGV[0];
+
+$input =~ s/P//;
+
+$input = 0 if ($input < 0);
+$input = 99 if ($input > 99);
+
+my $cmd = "halcmd setp pyvcp.power-meter $input";
+
+# print "CMD: $cmd\n";
+
+system $cmd;
+
+my $val = int($input * (64 / 100));
+
+# print "VAL: $val\n";
+
+my $bit;
+
+foreach $bit (1, 2, 4, 8, 16, 32) {
+
+    my $pwm = $val & $bit;
+
+    my $n = 0;
+
+    $n = 1 if ($pwm != 0);
+
+    $cmd = "halcmd sets PWM" . $bit . "-bit $n";
+
+    # print "CMD: $cmd\n";
+
+    system $cmd;
+
+}
+
+

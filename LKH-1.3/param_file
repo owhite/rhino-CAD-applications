@@ -1,0 +1,2 @@
+PROBLEM_FILE = input_file
+TOUR_FILE = output_file

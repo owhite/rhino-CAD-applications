@@ -1,0 +1,36 @@
+NAME : bayg29.tour
+COMMENT : Optimum tour for bayg29.tsp (Length 1610)
+TYPE : TOUR
+DIMENSION : 29
+TOUR_SECTION  
+19
+11
+22
+17
+14
+18
+15
+4
+10
+20
+2
+21
+5
+29
+3
+26
+9
+12
+6
+28
+1
+24
+13
+16
+27
+8
+23
+7
+25
+-1
+EOF

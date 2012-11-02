@@ -1,0 +1,46 @@
+NAME : ftv38.tour
+COMMENT : Optimum tour for ftv38.tsp (Length 1530)
+TYPE : TOUR
+DIMENSION : 39
+TOUR_SECTION  
+30
+2
+4
+1
+17
+16
+6
+7
+8
+9
+38
+10
+11
+13
+12
+15
+18
+19
+20
+29
+28
+21
+14
+37
+22
+23
+24
+25
+26
+27
+31
+32
+33
+35
+39
+3
+5
+36
+34
+-1
+EOF

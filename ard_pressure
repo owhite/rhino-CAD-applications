@@ -1,0 +1,83 @@
+#!/usr/bin/python
+
+#    HAL userspace component to interface with Arduino board
+#    Inspiration from code written by Jeff Epler <jepler@unpythonic.net>
+#    Original Copyright (C) 2007 
+#
+
+import serial
+import hal
+import sys
+import time
+import smtplib
+
+def sendsms(input) : 
+	to = '3019435994@vtext.com'
+	user = 'smouldering.dog@gmail.com'
+	pwd = '2964google'
+	smtpserver = smtplib.SMTP("smtp.gmail.com", 587)
+	smtpserver.ehlo()
+	smtpserver.starttls()
+	smtpserver.ehlo
+	smtpserver.login(user, pwd)
+	msg = 'To:' + to + '\n' + 'From: ' + user + '\n\n' + input + '\n\n'
+	smtpserver.sendmail(user, to, msg)
+	smtpserver.close()
+	sent_message = True
+
+minutes = 30
+arbitrary_number = 400
+
+port = "/dev/ttyUSB0"
+
+if len(sys.argv) > 1:
+    PORT = sys.argv[1]
+
+ser = serial.Serial(port, 9600, timeout=2)
+
+c = hal.component("ard_pressure")
+c.newpin("analog-in-00", hal.HAL_FLOAT, hal.HAL_OUT)
+c.newpin("analog-in-01", hal.HAL_FLOAT, hal.HAL_OUT)
+c.newpin("program-is-running", hal.HAL_BIT, hal.HAL_IN)
+c.newpin("oxygen_timer", hal.HAL_U32, hal.HAL_OUT)
+c.ready()
+
+t0 = time.time()
+
+try:
+    while 1:
+        line = ''
+        line = ser.readline()
+        line = line.rstrip('\n');
+
+        if len(line) > 0:
+            num = line.count(" ");
+            if num == 1:
+                a1, a2 = line.split()
+		a1 = float(a1)
+		a2 = float(a2)
+                c['analog-in-00'] = a1
+                c['analog-in-01'] = a2
+
+		if a2 > arbitrary_number: # oxygen is on, start the clock should run
+			t1 = time.time() # advance the timer
+		else:
+			t0 = time.time() # reset counters
+			t1 = time.time() 
+		if (c['program-is-running'] == True):
+			t0 = time.time() # reset counter
+		if c['program-is-running'] == False and t1 - t0 > (60 * minutes):
+			msg = "OXYGEN WARNING -- Shut off the main valve"
+			sendsms(msg)
+			t0 = time.time() # reset counters to present
+			t1 = time.time() 
+
+		c['oxygen_timer'] = int(t1-t0)
+			
+
+        ser.write('X'); # pings the arduino to send
+        time.sleep(.001)
+
+	
+except (KeyboardInterrupt,):
+    raise SystemExit, 0

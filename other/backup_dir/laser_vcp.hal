@@ -1,0 +1,144 @@
+loadusr -W pyvcp -c pyvcp laser_vcp.xml
+
+loadrt hal_parport cfg="0xb400"
+
+addf parport.0.write servo-thread -1
+
+# invoke this with halrun
+
+loadrt or2 count=4
+addf or2.0 servo-thread
+addf or2.1 servo-thread
+addf or2.2 servo-thread
+
+loadrt oneshot count=1
+addf oneshot.0 servo-thread 
+
+# ------------- 
+# bounce estop
+net bit1 pyvcp.estop_reset_button => pyvcp.led-1 parport.0.pin-02-out
+# ------------- 
+# laser power supply
+net bit2 pyvcp.chbutton-sample2 => pyvcp.led-2 parport.0.pin-03-out
+# ------------- 
+# motor power supply
+net bit3 pyvcp.chbutton-sample3 => pyvcp.led-3 parport.0.pin-04-out
+# ------------- 
+# chiller
+net bit4 pyvcp.chbutton-sample4 => pyvcp.led-4 parport.0.pin-05-out
+
+# ------------- 
+# create ventilation, link to motion.digital, and or2-ed with a checkbutton
+newsig ventilation bit
+linksp ventilation <= motion.digital-out-00 
+
+newsig chbutton5 bit
+linksp chbutton5 pyvcp.chbutton-sample5
+
+linksp ventilation or2.0.in0
+linksp chbutton5 or2.0.in1
+net bit5 parport.0.pin-06-out or2.0.out pyvcp.led-5
+
+# ------------- 
+# create gas line, link to motion.digital, and or2-ed with a checkbutton
+newsig gasline bit
+linksp gasline <= motion.digital-out-01
+
+newsig chbutton6 bit
+linksp chbutton6 pyvcp.chbutton-sample6
+
+linksp gasline or2.1.in0
+linksp chbutton6 or2.1.in1
+net bit6 parport.0.pin-07-out or2.1.out pyvcp.led-sample6
+
+# ------------- 
+# lighting
+net bit7 pyvcp.chbutton-sample7 => pyvcp.led-7 parport.0.pin-08-out 
+
+# never got this stuff to work. 
+# hook a pyvcp slider (floating point value) to oneshot.0.width, 
+#  and a pyvcp momentary button to oneshot.N.in
+#  and oneshot.0.out to your laser enable
+#
+# net float1 pyvcp.pulse_duration-f => oneshot.0.width 
+# net bit8 pyvcp.pulse_button => oneshot.0.in
+#
+#  oneshot.0.out must get connected to laser enable
+# I thought it should be this...
+# net bit9 oneshot.0.out => pyvcp.led-pulse halui.mist.on
+# but that does not pulse the laser.
+
+# net bit9 oneshot.0.out => pyvcp.led-pulse 
+
+
+############################################################
+
+# load the m5i20 driver
+loadrt hal_m5i20
+
+# update digital inputs
+addf m5i20.0.digital-in-read servo-thread 1
+
+# update digital outputs
+addf m5i20.0.digital-out-write servo-thread 1
+
+# misc update ? required to update onboard LEDs (at least...)
+addf m5i20.0.misc-update servo-thread 1
+
+# update encoder counters
+addf m5i20.0.encoder-read servo-thread 1
+
+# update DACs and DAC-enable
+addf m5i20.0.dac-write servo-thread 1
+
+# IO
+# Link digital inputs to LEDs
+linkpp pyvcp.led-10     m5i20.0.in-26-not
+linkpp pyvcp.led-11     m5i20.0.in-27
+linkpp pyvcp.led-12     m5i20.0.in-28
+linkpp pyvcp.led-13     m5i20.0.in-29
+linkpp pyvcp.led-14     m5i20.0.in-30
+linkpp pyvcp.led-15     m5i20.0.in-31-not
+
+# link digital outputs of M5i20 card to a button
+
+linkpp pyvcp.unused m5i20.0.out-14
+
+# 
+# laser power settings
+# 
+
+newsig PWM1-bit bit
+newsig PWM2-bit bit
+newsig PWM3-bit bit
+newsig PWM4-bit bit
+newsig PWM5-bit bit
+newsig PWM6-bit bit
+
+net PWM1-bit  => m5i20.0.out-08 pyvcp.led-21
+net PWM2-bit  => m5i20.0.out-09 pyvcp.led-22
+net PWM4-bit  => m5i20.0.out-10 pyvcp.led-23
+net PWM8-bit  => m5i20.0.out-11 pyvcp.led-24
+net PWM16-bit => m5i20.0.out-12 pyvcp.led-25
+net PWM32-bit => m5i20.0.out-13 pyvcp.led-26
+
+##-------
+#link digital outputs of M5i20 card to a a couple things, 
+#we OR the button from pyvcp and digital-out-02 together
+
+setp m5i20.0.out-15-invert FALSE
+
+newsig laser_button bit
+linksp laser_button <= pyvcp.laser_state bit
+
+newsig laser_digital bit
+linksp laser_digital <= motion.digital-out-02
+
+linksp laser_button or2.2.in0
+linksp laser_digital or2.2.in1
+
+# then net them together. 
+# note: net only works if you create the newsigs. 
+net bit8 or2.2.out => m5i20.0.out-15 
+
+

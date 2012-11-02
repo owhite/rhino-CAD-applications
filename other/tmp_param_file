@@ -1,0 +1,2 @@
+PROBLEM_FILE = tmp_input_file
+TOUR_FILE = tmp_output_file

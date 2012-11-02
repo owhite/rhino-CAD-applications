@@ -1,0 +1,4 @@
+PROBLEM_FILE = TSPLIB/burma14.tsp
+OPTIMUM = 27686
+PI_FILE = PI_FILES/burma14.pi
+TOUR_FILE = thing.out
