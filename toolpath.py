@@ -1,294 +1,459 @@
 #!/usr/bin/env python
-version = '1.0'
-# python toolpath.py
 
-from Tkinter import *
-from tkFileDialog import *
-from math import *
-from SimpleDialog import *
-from ConfigParser import *
-from decimal import *
-import tkMessageBox
-from subprocess import Popen, PIPE, STDOUT
 import os
+import time
+import sys
+import getopt
+import re
+import csv
+import gcode
+import TSP
 
-IN_AXIS = os.environ.has_key("AXIS_PROGRESS_BAR")
+from ConfigParser import *
+from shapely.geometry import LineString
+from shapely.geometry import Polygon
+from shapely.geometry import Point
+from PIL import Image, ImageDraw, ImageFont
 
-class Application(Frame):
-    def __init__(self, master=None):
-        Frame.__init__(self, master, width=700, height=400, bd=1)
-        self.grid()
-        self.InputFile = 'nc_files/toolpath.ini'
+class Toolpath:
+    def __init__(self):
         self.LoadIniData()
-        self.createMenu()
-        self.createWidgets()
+        self.verbose = 0
+        self.total_salesman = 0
+        self.tag = ""
+        self.gcode = ""
+        self.clock_time = "gotta set time"
+        self.tour_executable = "/usr/bin/LKH.UNIX"
 
-    def createMenu(self):
-        #Create the Menu base
-        self.menu = Menu(self)
-        #Add the Menu
-        self.master.config(menu=self.menu)
-        #Create our File menu
-        self.FileMenu = Menu(self.menu)
-        #Add our Menu to the Base Menu
-        self.menu.add_cascade(label='File', menu=self.FileMenu)
-        #Add items to the menu
-        self.FileMenu.add_command(label='Quit', command=self.quit)
-        
-        self.EditMenu = Menu(self.menu)
-        self.menu.add_cascade(label='Edit', menu=self.EditMenu)
-        self.EditMenu.add_command(label='Copy', command=self.CopyClpBd)
-        self.EditMenu.add_command(label='Select All', command=self.SelectAllText)
-        self.EditMenu.add_command(label='Delete All', command=self.ClearTextBox)
-        self.EditMenu.add_separator()
-        self.EditMenu.add_command(label='NC Directory', command=self.NcFileDirectory)
-        self.EditMenu.add_command(label='tmp Directory', command=self.TMPFileDirectory)
-        
-        self.HelpMenu = Menu(self.menu)
-        self.menu.add_cascade(label='Help', menu=self.HelpMenu)
-        self.HelpMenu.add_command(label='Help Info', command=self.HelpInfo)
-        self.HelpMenu.add_command(label='About', command=self.HelpAbout)
+    def LoadRawData(self):
+        file = self.input_file
+        self.polygons = {}
+        try:
+            inc = 0
+            done = {}
+            self.polygons[inc] = {}
+            with open(file) as csv_file:
+                coords = []
+                first_time = 1
+                for row in csv.reader(csv_file, delimiter=' '):
+                    if first_time != 1: # its not first row
+                        coords.append(pt)
+                        self.polygons[inc] = {}
+                        self.polygons[inc]['layer'] = layer
+                        if row[0] not in done: # its new
+                            self.polygons[inc]['data'] = LineString(coords)
+                            inc += 1
+                            coords = []
+                    first_time = 0
+                    done[row[0]] = 1
+                    layer = row[1]
+                    pt = (float(row[3]),float(row[4]))
 
-    def createWidgets(self):
-        
-        self.sp1 = Label(self)
-        self.sp1.grid(row=0)
-        
-        self.st1 = Label(self, text='File location -t')
-        self.st1.grid(row=1, column=0, sticky=E)
-        self.TargetDirVar = StringVar()
-        self.TargetDir = Entry(self, width=30, textvariable=self.TargetDirVar)
-        self.TargetDir.grid(row=1, column=1, sticky=W)
-        self.TargetDir.focus_set()
-        self.TargetDir.insert(0, self.cp.get('Directories', 'target_dir'));
+                coords.append(pt)
+                self.polygons[inc]['data'] = LineString(coords)
 
-        self.st2 = Label(self, text='Input file -i')
-        self.st2.grid(row=2, column=0, sticky=E)
-        self.TargetNameVar = StringVar()
-        self.TargetName = Entry(self, width=18, textvariable=self.TargetNameVar)
-        self.TargetName.grid(row=2, column=1, sticky=W)
-        self.TargetName.insert(0, self.cp.get('Files', 'target'));
+        except IOError as e:
+            print 'Operation failed: %s' % e.strerror
 
-        self.st4 = Label(self, text='Execute ')
-        self.st4.grid(row=3, column=0, sticky=E)
-        self.ExecuteVar = StringVar()
-        self.Execute = Entry(self, width=30, textvariable=self.ExecuteVar)
-        self.Execute.grid(row=3, column=1, sticky=W)
-        self.Execute.insert(0, self.cp.get('Executable', 'toolpathcode'));
+    def AddLine(self, line, layer):
+        inc = len(self.polygons)
+        self.polygons[inc] = {}
+        self.polygons[inc]['layer'] = layer
+        self.polygons[inc]['data'] = line
 
-        self.st3 = Label(self, text='Laser power -p')
-        self.st3.grid(row=4, column=0, sticky=E)
-        self.LaserPowerVar = StringVar()
-        self.LaserPower = Entry(self, width=5, textvariable=self.LaserPowerVar)
-        self.LaserPower.grid(row=4, column=1, sticky=W)
-        self.LaserPower.insert(0, self.cp.get('Gcode', 'power'));
+    def DrawRawData(self, img_file):
+        padding=20
+        # shift all coords in a bit
+        tmp1 = []
+        first_time = 1
+        for i, l in enumerate(self.polygons):
+            coords = self.polygons[i]['data'].coords
+            new_coords = []
+            for (x,y) in coords:
+                if first_time:
+                    maxx,maxy=x,y
+                    minx,miny=x,y
+                minx=min(x,minx)
+                miny=min(y,miny)
+                maxx=max(x,maxx)
+                maxy=max(y,maxy)
+                new_coords.append((x,y))
+                first_time = 0
+            tmp1.append(new_coords)
 
-        self.st5 = Label(self, text='Feedrate -f')
-        self.st5.grid(row=5, column=0, sticky=E)
-        self.FeedrateVar = StringVar()
-        self.Feedrate = Entry(self, width=5, textvariable=self.FeedrateVar)
-        self.Feedrate.grid(row=5, column=1, sticky=W)
-        self.Feedrate.insert(0, self.cp.get('Gcode', 'feedrate'));
-        
-        self.spacer3 = Label(self, text='')
-        self.spacer3.grid(row=6, column=0, columnspan=4)
-        self.g_code = Text(self,width=40,height=10,bd=3)
-        self.g_code.grid(row=7, column=0, columnspan=5, sticky=E+W+N+S)
-        self.tbscroll = Scrollbar(self,command = self.g_code.yview)
-        self.tbscroll.grid(row=7, column=5, sticky=N+S+W)
-        self.g_code.configure(yscrollcommand = self.tbscroll.set) 
+        inc_x = 640 / (maxx - minx)
+        inc_y = 400 / (maxy - miny)
 
-        self.sp4 = Label(self)
-        self.sp4.grid(row=8)
-        
-        self.st8=Label(self,text='Units')
-        self.st8.grid(row=0,column=5)
-        UnitOptions=[('Inch',1),('MM',2)]
-        self.UnitVar=IntVar()
-        for text, value in UnitOptions:
-            Radiobutton(self, text=text,value=value,
-                variable=self.UnitVar,indicatoron=0,width=6,)\
-                .grid(row=value, column=5)
-        self.UnitVar.set(1)
-               
-        self.GenButton = Button(self, text='Generate G-Code',command=self.GenCode)
-        self.GenButton.grid(row=8, column=0)
-        
-        self.SaveButton = Button(self, text='Save config',command=self.SaveConfig)
-        self.SaveButton.grid(row=8, column=1)
+        minx = minx * inc_x
+        miny = miny * inc_y
 
-        if IN_AXIS:
-            self.toAxis = Button(self, text='Write to AXIS and Quit',\
-                command=self.WriteToAxis)
-            self.toAxis.grid(row=8, column=3)
-        
-            self.quitButton = Button(self, text='Quit', command=self.QuitFromAxis)
-            self.quitButton.grid(row=8, column=5, sticky=E)
-        else:
-            self.quitButton = Button(self, text='Quit', command=self.quit)
-            self.quitButton.grid(row=8, column=5, sticky=E)    
+        tmp2 = []
+        for i in tmp1:
+            j = []
+            for (x,y) in i:
+                x = int((x * inc_x) - minx) + padding                
+                y = (400 - int((y * inc_y) - miny)) + padding
+                j.append((x,y))
+            tmp2.append(j)
+            
+        img=Image.new("RGB",(640 + 2*padding,400 + 2*padding),color=(255,255,255))
+        font=ImageFont.load_default()
+        d=ImageDraw.Draw(img);
+        inc = 0
+        for coords in tmp2:
+            width = 1
+            if self.polygons[inc]['layer'] == 'CUTS_PATH':
+                width = 2
+            color = self.layer_colors[self.polygons[inc]['layer']]
+            num = len(coords)
+            for i,q in enumerate(coords):
+                if i == num - 1:
+                    break
+                x1,y1=coords[i]
+                x2,y2=coords[i+1]
+                d.line((x1,y1,x2,y2),fill=color, width = width)
+            inc += 1
 
-    def QuitFromAxis(self):
-        sys.stdout.write("M2 (Face.py Aborted)")
-        self.quit()
+        img.save(img_file, "PNG")
 
-    def WriteToAxis(self):
-        sys.stdout.write(self.g_code.get(0.0, END))
-        self.quit()
-
-    def GenCode(self):
-        NcDir = self.cp.get("Directories", "ncfiles")
-        if len(NcDir) == 0:
-            NcDir = self.GetDirectory()
-        self.cp.set("Directories", "ncfiles", NcDir)
-
-        TMPDir = self.cp.get("Directories", "tmp_dir")
-        if len(TMPDir) == 0:
-            TMPDir = self.GetDirectory()
-        self.cp.set("Directories", "tmp_dir", TMPDir)
-
-        process = str(self.ExecuteVar.get()) \
-            + ' -f ' + str(self.FeedrateVar.get()) \
-            + ' -i ' + str(self.TargetNameVar.get()) \
-            + ' -t ' + str(self.TargetDirVar.get()) \
-            + ' -p ' + str(self.LaserPowerVar.get()) \
-            + ' -d ' + self.cp.get("Directories", "ncfiles") \
-            + ' -g thing.ngc'
-
-        self.g_code.delete(1.0,END)
-        self.g_code.insert(END, "CMD: " + process)
-
-        p = Popen(process, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True)
-        output = p.stdout.read()
-
-        self.g_code.insert(END, '\n')
-        for line in output:
-            self.g_code.insert(END, line)
-
-        # for line in p.stderr:
-            #self.g_code.insert(END, line)
-
-    def FToD(self,s): # Float To Decimal
-        """
-        Returns a decimal with 4 place precision
-        valid imputs are any fraction, whole number space fraction
-        or decimal string. The input must be a string!
-        """
-        s=s.strip(' ') # remove any leading and trailing spaces
-        D=Decimal # Save typing
-        P=D('0.0001') # Set the precision wanted
-        if ' ' in s: # if it is a whole number with a fraction
-            w,f=s.split(' ',1)
-            w=w.strip(' ') # make sure there are no extra spaces
-            f=f.strip(' ')
-            n,d=f.split('/',1)
-            return D(D(n)/D(d)+D(w)).quantize(P)
-        elif '/' in s: # if it is just a fraction
-            n,d=s.split('/',1)
-            return D(D(n)/D(d)).quantize(P)
-        return D(s).quantize(P) # if it is a decimal number already
+    def str2array(self, s):
+        return(tuple(int(i) for i in s.split(',')))
 
     def LoadIniData(self):
-        FileName = self.InputFile
+        FileName = re.sub(r'\.py$', "", os.path.abspath( __file__ )) + '.ini'
         self.cp=ConfigParser()
         try:
             self.cp.readfp(open(FileName,'r'))
-            # f.close()
+	# f.close()
         except IOError:
             raise Exception,'NoFileError'
-        return
-        
-    def GetDirectory(self, name):
-        if len(name) == 0:
-            name = '.'
-        DirName = askdirectory(initialdir=name,title='Please select a directory')
-        if len(DirName) > 0:
-            return DirName 
-       
-    def CopyClpBd(self):
-        self.g_code.clipboard_clear()
-        self.g_code.clipboard_append(self.g_code.get(0.0, END))
 
-    def SaveConfig(self):
-        try:
-            FileName = self.InputFile
-            # nc dir and tmp_dir
-            NcDir = self.cp.get("Directories", "ncfiles")
-            if len(NcDir) == 0:
-                NcDir = self.GetDirectory()
-            self.cp.set("Directories", "ncfiles", NcDir)
+        self.ini_file = FileName
+        self.input_file = self.cp.get('Variables', 'raw_input_file')
+        self.output_file = self.cp.get('Variables', 'output_file')
 
-            TMPDir = self.cp.get("Directories", "tmp_dir")
-            if len(TMPDir) == 0:
-                TMPDir = self.GetDirectory()
-            self.cp.set("Directories", "tmp_dir", TMPDir)
+        self.parts_layer = self.cp.get('Layers', 'parts_name')
+        self.cuts_layer = self.cp.get('Layers', 'cuts_name')
+        self.path_layer = self.cp.get('Layers', 'path_name')
+        self.cutpath_layer = self.cp.get('Layers', 'cutpath_name')
 
-            self.cp.set("Directories", "tmp_dir", TMPDir)
-            self.cp.set("Directories", "ncfiles", NcDir)
-            self.cp.set("Directories", "target_dir", self.TargetDirVar.get())
-            self.cp.set("Gcode", "feedrate", self.FeedrateVar.get())
-            self.cp.set("Gcode", "power", self.LaserPowerVar.get())
-            self.cp.set("Files", "target", self.TargetNameVar.get())
-            self.cp.set("Executable", "toolpathcode", self.ExecuteVar.get())
-            self.fn=open(FileName,'w')
-            self.cp.write(self.fn)
-            self.fn.close()
-        except:
-            tkMessageBox.showinfo('Error', 'broke in save config')            
+        self.debug = self.cp.getboolean('Debug', 'debug')
+        self.debug_file_name = self.cp.get('Debug', 'debug_file_name')
 
-    def WriteToFile(self):
-        try:
-            NcDir = self.cp.get("Directories", "ncfiles")
-            if len(NcDir)>0:
-                NcDir = self.GetDirectory()
-            self.NewFileName = asksaveasfile(initialdir=self.NcDir,mode='w', \
-                master=self.master,title='Create NC File',defaultextension='.ngc')
-            self.NewFileName.write(self.g_code.get(0.0, END))
-            self.NewFileName.close()
-        except:
-            tkMessageBox.showinfo('Error', 'broke in write to file')            
+        self.layer_colors = {}
+        self.layer_colors[self.parts_layer] = self.str2array(self.cp.get('Layers', 'parts_color'))
+        self.layer_colors[self.cuts_layer] = self.str2array(self.cp.get('Layers', 'cuts_color'))
+        self.layer_colors[self.path_layer] = self.str2array(self.cp.get('Layers', 'path_color'))
+        self.layer_colors[self.cutpath_layer] = self.str2array(self.cp.get('Layers', 'cutpath_color'))
 
-    def NcFileDirectory(self):
-        DirName = self.GetDirectory(self.cp.get("Directories", "ncfiles"))
-        if len(DirName)>0:
-            self.cp.set("Directories", "ncfiles", DirName)
+        self.iterations = self.cp.getint('TSP', 'iterations')
+        self.start_temp = self.cp.getfloat('TSP', 'start_temp')
+        self.alpha = self.cp.getfloat('TSP', 'alpha')
 
-    def TMPFileDirectory(self):
-        DirName = self.GetDirectory(self.cp.get("Directories", "tmp_dir"))
-        if len(DirName)>0:
-            self.cp.set("Directories", "tmp_dir", DirName)
+    def LinesByLayer(self, layer):
+        p = []
+        for i, l in enumerate(self.polygons):
+            if self.polygons[i]['layer'] == layer:
+                p.append(self.polygons[i]['data'])
+        return p
 
-    def Simple(self):
-        tkMessageBox.showinfo('Feature', 'Sorry this Feature has\nnot been programmed yet.')
+    def GetIntersectionDistance(self, l1, l2):
+        # l1 should be just two coordinate positions
+        # get its starting coorinate
+        pt1 = Point(l1.coords[0])
+        x = l1.intersection(l2)
+        # intersections can return a lot of things
+        d = -1
+        if x.wkt == 'GEOMETRYCOLLECTION EMPTY':
+            d = -1
+            # print "nothing"
+        elif re.match('^POINT', x.wkt): 
+            # print "point"
+            pt2 = Point(x.coords[0])
+            d = pt1.distance(pt2)
+        elif re.match('^MULTI', x.wkt): 
+            # print "mpoint"
+            # this will return the minimum distance
+            pt2 = Point(x[0].coords[0])
+            d = pt1.distance(pt2) 
+            for pt2 in x:
+                pt2 = Point(pt2)
+                if d < pt1.distance(pt2):
+                    d = pt1.distance(pt2)
+        else:
+            print 'dunno what intersection pass me'
+        return d
 
-    def ClearTextBox(self):
-        self.g_code.delete(1.0,END)
+    def OrderLinesUsingPath(self, lines, path, start):
+        order = []
+        # tries to figure out where a user defined path interects with all your
+        #  objects, to determine the order that objects should be cut
+        if len(lines) == 0:
+            # there are no lines to order
+            print "no lines sent to OrderCutsUsingPath"
+        else: 
+            # go through all the segments of the path
+            #  and get the distances of things it hit on segment
+            coords = path.coords
+            num = len(coords)
+            results = {}
+            dis = 0 # this accumulates distance along the path
+            for i,q in enumerate(coords):
+                if i == num - 1:
+                    break
+                seg = LineString([coords[i], coords[i+1]])
+                # print seg
+                inc = 0
+                for line in lines:
+                    d = self.GetIntersectionDistance(seg, line)
+                    if d != -1:
+                        d += dis
+                        results[inc] = d
+                    # print '%d %lf' % (inc, d)
+                    inc += 1
+                dis += Point(coords[i]).distance(Point(coords[i+1]))
+            # this sorts on the values in the dictionary 'results'
+            import operator
+            [order.append(i[0]) for i in sorted(results.iteritems(), key=operator.itemgetter(1))]
+                
+            # now we have the order, clean it up a little
+            order, path, parts = self.OptimizePartsFromOrder(lines, order, start)
 
-    def SelectAllText(self):
-        self.g_code.tag_add(SEL, '1.0', END)
+            # this returns reversed lines in cases where it makes a better
+            # tour. it does not delete the lines that were not in the tour
+            return order, path, parts
 
-    def SelectCopy(self):
-        self.SelectAllText()
-        self.CopyClpBd()
+    # this works okay-ish. Did see some examples of picking
+    #  the nearest start point, at the expense of the distance
+    #  to the next part. Next implementation should look ahead
+    def OptimizePartsFromOrder(self, lines, order, start):
+        # find nearest thing to start, rotate the order of the tour
+        first = self.GetNearestCenterOrEnd(lines, order, start)
+        i = order.index(first)
+        order = order[i:] + order[:i]
 
-    def HelpInfo(self):
-        SimpleDialog(self,
-            text='Required fields are:\n'
-            'Part Width & Length,\n'
-            'Amount to Remove,\n'
-            'and Feedrate\n'
-            'Fractions can be entered in most fields',
-            buttons=['Ok'],
-            default=0,
-            title='User Info').go()
-    def HelpAbout(self):
-        tkMessageBox.showinfo('Help About', 'Programmed by\n'
-            'Big John T (AKA John Thornton)\n'
-            'Rick Calder\n'
-            'Brad Hanken\n'
-            'Version ' + version)
+        pos = start
+        c = [start]
+        c.append(start)
+        for i in order:
+            line = lines[i]
+            if line.is_ring: 
+                c.append((line.centroid.x, line.centroid.y))
+                pos = (line.centroid.x, line.centroid.y)
+            else: 
+                d1 = Point(pos).distance(Point(line.coords[0]))
+                d2 = Point(pos).distance(Point(line.coords[-1]))
+                if d2 < d1:
+                    lines[i] = self.ReverseLine(lines[i])
+                c.append(lines[i].coords[0])
+                c.append(lines[i].coords[-1])
+                pos = (line.coords[-1])
 
-app = Application()
-app.master.title('G-Code Generator')
-app.mainloop()
+        #  path is mostly used for debugging and drawing. 
+        path = LineString(c)        
+        return order, path, lines
+
+    def GetNearestCenterOrEnd(self, lines, order, start):
+        # collect up all the points to test
+        min_line = None
+        for i in order:
+            line = lines[i]
+            if line.is_ring: 
+                pt = (line.centroid.x, line.centroid.y)
+                dis = Point(start).distance(Point(pt))
+            else: 
+                d1 = Point(start).distance(Point(line.coords[0]))
+                d2 = Point(start).distance(Point(line.coords[-1]))
+                dis = min(d1, d2)
+            if min_line is None or dis <= min_dis:
+                min_dis = dis
+                min_line = i
+        # returns the line that is nearest to start
+        return min_line
+
+    def ReverseLine(self,line):
+        l = list(line.coords)
+        l.reverse()
+        return LineString(l)
+
+    def GatherCenterAndEndCoords(self, lines):
+        # nothing special just used to grab centers of ring objects
+        #  and the end points of linear ones
+        coords = []
+        locked = []
+        info = {} # helps record what type of thing was ordered
+        tour_pos = 0
+        line_id = 0
+        for l in lines:
+            # if an object is circular, arbitrarily pick its center
+            # see: http://toblerity.github.com/shapely/manual.html
+            #  to understand is_ring/is circular
+            if l.is_ring: 
+                info[tour_pos] = {}
+                coords.append((l.centroid.x, l.centroid.y))
+                info[tour_pos]['line_id'] = line_id
+                info[tour_pos]['type'] = 'ring'
+                info[tour_pos]['pt'] = (l.centroid.x, l.centroid.y)
+                tour_pos += 1
+            # if an object is linear, create two points,
+            #   the start and the end
+            else:
+                info[tour_pos] = {}
+                info[tour_pos]['line_id'] = line_id
+                info[tour_pos]['type'] = 'start'
+                info[tour_pos]['pt'] = l.coords[0]
+
+                info[tour_pos+1] = {}
+                info[tour_pos + 1]['line_id'] = line_id
+                info[tour_pos + 1]['type'] = 'end'
+                info[tour_pos + 1]['pt'] = l.coords[-1]
+
+                coords.append(l.coords[0]) # gather first coord
+                coords.append(l.coords[-1]) # last
+                locked.append((tour_pos,tour_pos + 1))
+                tour_pos += 2
+            line_id += 1
+        return coords, info, locked
+
+    # works pretty good. One issue is it does not 'cut' rings to find
+    #  the optimal place to enter into them. Another issue is it does
+    #  not base the shortest path on the starting position, because 
+    #  it adds in the starting position after it does the tsp. 
+    def OrderLines(self, lines, start, temp, alpha, iterations):
+        tour = []
+        # tries to figure out an order of lines to be cut
+        #  using the traveling saleman algorithm
+
+        coords, info, locked = self.GatherCenterAndEndCoords(lines)
+
+        if len(lines) == 0:
+            print "no lines sent to OrderLines"
+            tour = []
+        elif len(lines) == 1:
+            tour = [0]
+        elif len(lines) == 2:
+            tour = [0,1,2]
+            if len(coords) == 2:
+                tour = [0,1]
+        else:
+            # create a path. This will this return an order of the 
+            #  center of ring-shaped lines, and the start or end 
+            #  points of linear lines
+            print 'running tsp'
+            tsp = TSP.TSP(coords = coords, start_temp = temp, alpha = alpha)
+            tour = tsp.anneal(locked_points=locked, iterations = iterations)
+                
+        # getting tour is great, but it is not the actual order of lines.
+        #  it is the tour of points defined by the centroid
+        #  of rings, the start _and_ ends of linear lines.
+        # Do this to get the actual order of lines:
+        order = []
+        for i in tour:
+            if info[i]['line_id'] not in order:
+                order.append(info[i]['line_id'])
+                if info[i]['type'] == 'end':
+                    id = info[i]['line_id']
+                    lines[id] = self.ReverseLine(lines[id])
+
+        path = LineString()
+        # order now generated, but it doesnt know where the start is
+        #  get nearest thing to start, rotate the order
+        if len(order) != 0:
+            first = self.GetNearestCenterOrEnd(lines, order, start)
+            i = order.index(first)
+            order = order[i:] + order[:i]
+
+            # all that is done, now just collect the points to create the path
+            #  this is mostly used for debugging and drawing. 
+            c = [start]
+            for i in order:
+                if lines[i].is_ring: 
+                    c.append((lines[i].centroid.x, lines[i].centroid.y))
+                else:
+                    c.append(lines[i].coords[0]) 
+                    c.append(lines[i].coords[-1]) 
+
+            path = LineString(c)        
+            # this returns reversed lines in cases where it makes a better
+            # tour. it does not delete the lines that were not in the tour
+        return order, path, lines
+
+    def toolpath(self):
+        # check if user supplied a line connecting the parts
+        path = self.LinesByLayer(self.path_layer)
+    
+        # get all the parts
+        parts = self.LinesByLayer(self.parts_layer)
+    
+        # get all cuts
+        cuts = self.LinesByLayer(self.cuts_layer)
+    
+        # get all cuts
+        cuts_path = self.LinesByLayer(self.cutpath_layer)
+    
+        if len(path) > 1:
+            print "there can only be one path to cut parts"
+        elif len(path) == 1:
+            order, path, parts = self.OrderLinesUsingPath(parts,
+                                                          path[0],
+                                                          (0.0,0.0))
+        else:
+            order, path, parts = self.OrderLines(parts, (0.0,0.0),
+                                                 self.start_temp,
+                                                 self.alpha,
+                                                 self.iterations)
+        # do this to debug and have a look at the part path
+        if self.debug:
+            self.AddLine(path, 'PART_PATH')
+
+        gcode_cuts = [] # list to export all cuts to gcode
+        cut_path = None
+        for i in order:
+            part = parts[i]
+            gcode_cuts.append(list(part.coords))
+            region = Polygon(part.coords)
+            cuts_in_part = [] 
+            for j in cuts:
+                if region.intersects(j):
+                    cuts_in_part.append(j)
+            for j in cuts_path:
+                if region.intersects(j):
+                    cut_path = j
+    
+            start = (0.0,0.0) # start is goofy. could be based on actual path
+                              #  of parts getting cut
+            if cut_path is not None:
+                tour, path, cuts_in_part = self.OrderLinesUsingPath(cuts_in_part,
+                                                                    cut_path,
+                                                                    start)
+            else:
+                tour, path, cuts_in_part = self.OrderLines(cuts_in_part,
+                                                           start,
+                                                           self.start_temp,
+                                                           self.alpha, 
+                                                           self.iterations)
+            for j in tour:
+                gcode_cuts.append(list(cuts_in_part[j].coords))
+
+            if self.debug:
+                self.AddLine(path, 'CUTS_PATH')
+
+        # do this to debug and have a look paths and parts
+        if self.debug:
+            self.DrawRawData(self.debug_file_name)
+
+        return gcode_cuts
+
+if __name__ == '__main__':
+    tp=Toolpath()
+    tp.LoadRawData()
+    gcode_cuts = tp.toolpath()
+
+    g = gcode.setup(tp)
+
+    for i in gcode_cuts:
+        g.write_polyline(i)
+
+    g.write_gcode(g)
+
 

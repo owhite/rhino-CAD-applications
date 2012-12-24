@@ -1,0 +1,112 @@
+(TUNEABLY NONIMITATIONAL  :: LINES: 112)
+#<feedrate>=12
+G17 G20 G40 G49 S10
+G80 G90 
+G92 X0 Y0 (SET CURRENT POSITION TO ZERO)
+G64 P0.005
+M64 P0 (VENTILATION ON)
+M65 P1 (GAS LINE OFF)
+M65 P2 (LASER OFF)
+G00 X4.0370 Y0.6915 F30
+
+M64 P1 (GAS LINE ON)
+M64 P2 (LASER ON)
+G4 P0.2
+G01 X4.0376 Y0.4961 F#<feedrate>
+M65 P1 (GAS LINE OFF)
+M65 P2 (LASER OFF)
+
+G00 X4.2208 Y0.6416 F30
+
+M64 P1 (GAS LINE ON)
+M64 P2 (LASER ON)
+G4 P0.2
+G01 X4.2195 Y0.6683 F#<feedrate>
+G01 X4.2186 Y0.6768 F#<feedrate>
+G01 X4.2169 Y0.6855 F#<feedrate>
+G01 X4.2145 Y0.6945 F#<feedrate>
+G01 X4.2113 Y0.7038 F#<feedrate>
+G01 X4.2094 Y0.7084 F#<feedrate>
+G01 X4.2073 Y0.7128 F#<feedrate>
+G01 X4.2050 Y0.7168 F#<feedrate>
+G01 X4.2025 Y0.7207 F#<feedrate>
+G01 X4.1997 Y0.7243 F#<feedrate>
+G01 X4.1967 Y0.7276 F#<feedrate>
+G01 X4.1935 Y0.7307 F#<feedrate>
+G01 X4.1900 Y0.7335 F#<feedrate>
+G01 X4.1825 Y0.7387 F#<feedrate>
+G01 X4.1744 Y0.7433 F#<feedrate>
+G01 X4.1656 Y0.7476 F#<feedrate>
+G01 X4.1562 Y0.7513 F#<feedrate>
+G01 X4.1465 Y0.7543 F#<feedrate>
+G01 X4.1417 Y0.7553 F#<feedrate>
+G01 X4.1369 Y0.7561 F#<feedrate>
+G01 X4.1322 Y0.7567 F#<feedrate>
+G01 X4.1276 Y0.7569 F#<feedrate>
+G01 X4.1229 Y0.7569 F#<feedrate>
+G01 X4.1183 Y0.7566 F#<feedrate>
+G01 X4.1008 Y0.7543 F#<feedrate>
+G01 X4.0851 Y0.7506 F#<feedrate>
+G01 X4.0814 Y0.7495 F#<feedrate>
+G01 X4.0778 Y0.7480 F#<feedrate>
+G01 X4.0741 Y0.7464 F#<feedrate>
+G01 X4.0705 Y0.7444 F#<feedrate>
+G01 X4.0633 Y0.7399 F#<feedrate>
+G01 X4.0561 Y0.7344 F#<feedrate>
+G01 X4.0544 Y0.7328 F#<feedrate>
+G01 X4.0527 Y0.7311 F#<feedrate>
+G01 X4.0511 Y0.7292 F#<feedrate>
+G01 X4.0496 Y0.7272 F#<feedrate>
+G01 X4.0482 Y0.7251 F#<feedrate>
+G01 X4.0455 Y0.7203 F#<feedrate>
+G01 X4.0443 Y0.7177 F#<feedrate>
+G01 X4.0421 Y0.7120 F#<feedrate>
+G01 X4.0402 Y0.7058 F#<feedrate>
+G01 X4.0386 Y0.6989 F#<feedrate>
+G01 X4.0373 Y0.6915 F#<feedrate>
+G01 X4.0340 Y0.7000 F#<feedrate>
+G01 X4.0304 Y0.7077 F#<feedrate>
+G01 X4.0284 Y0.7112 F#<feedrate>
+G01 X4.0262 Y0.7144 F#<feedrate>
+G01 X4.0240 Y0.7175 F#<feedrate>
+G01 X4.0217 Y0.7204 F#<feedrate>
+G01 X4.0192 Y0.7230 F#<feedrate>
+G01 X4.0166 Y0.7254 F#<feedrate>
+G01 X4.0139 Y0.7276 F#<feedrate>
+G01 X4.0111 Y0.7295 F#<feedrate>
+G01 X4.0082 Y0.7313 F#<feedrate>
+G01 X4.0052 Y0.7328 F#<feedrate>
+G01 X4.0020 Y0.7341 F#<feedrate>
+G01 X3.9988 Y0.7352 F#<feedrate>
+G01 X3.9862 Y0.7384 F#<feedrate>
+G01 X3.9750 Y0.7403 F#<feedrate>
+G01 X3.9699 Y0.7408 F#<feedrate>
+G01 X3.9652 Y0.7409 F#<feedrate>
+G01 X3.9608 Y0.7407 F#<feedrate>
+G01 X3.9568 Y0.7401 F#<feedrate>
+G01 X3.9491 Y0.7385 F#<feedrate>
+G01 X3.9416 Y0.7363 F#<feedrate>
+G01 X3.9342 Y0.7336 F#<feedrate>
+G01 X3.9270 Y0.7305 F#<feedrate>
+G01 X3.9202 Y0.7270 F#<feedrate>
+G01 X3.9141 Y0.7234 F#<feedrate>
+G01 X3.9087 Y0.7195 F#<feedrate>
+G01 X3.9040 Y0.7155 F#<feedrate>
+G01 X3.8998 Y0.7112 F#<feedrate>
+G01 X3.8959 Y0.7063 F#<feedrate>
+G01 X3.8924 Y0.7008 F#<feedrate>
+G01 X3.8893 Y0.6949 F#<feedrate>
+G01 X3.8885 Y0.6932 F#<feedrate>
+G01 X3.8878 Y0.6912 F#<feedrate>
+G01 X3.8866 Y0.6863 F#<feedrate>
+G01 X3.8844 Y0.6731 F#<feedrate>
+G01 X3.8829 Y0.6554 F#<feedrate>
+G01 X3.8820 Y0.4883 F#<feedrate>
+G01 X4.2207 Y0.4883 F#<feedrate>
+G01 X4.2208 Y0.6416 F#<feedrate>
+M65 P1 (GAS LINE OFF)
+M65 P2 (LASER OFF)
+
+M65 P0 (VENTILATION OFF)
+G0 X0.000 Y0.000 F30 (HOME AGAIN HOME AGAIN)
+M2
