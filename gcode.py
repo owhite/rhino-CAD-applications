@@ -13,6 +13,7 @@ class setup:
             raise Exception,'NoFileError'
 
         self.gcode_string = ""
+        self.dictionary_file = self.cp.get('Gcode', 'dictionary')
         self.move_feed_rate = self.cp.getint('Gcode', 'move_feed_rate')
         self.cut_feed_rate = self.cp.getint('Gcode', 'cut_feed_rate')
         self.power_setting = self.cp.getint('Gcode', 'power_setting')
@@ -34,9 +35,33 @@ class setup:
         else:
             self.move_speed = 10
 
+    def MakePhrase(self):
+        try:
+            ins = open(self.dictionary_file, "r")
+        except IOError:
+            raise Exception,'NoFileError : %s' % (self.dictionary_file)
+
+        adjective_count = 0
+        adverb_count = 0
+        adj = []
+        adv = []
+        for line in ins:
+            line = line.strip()
+            (word,type) = line.split('\t')
+            if type == "A":
+                adj.append(word)
+                adjective_count += 1
+            if type == "v":
+                adv.append(word)
+                adverb_count += 1
+
+        import random
+
+        s = '%s %s' % (adv[int(adverb_count * random.random())], 
+                       adj[int(adjective_count * random.random())])
+        return s.upper()
+
     def write_gcode(self, g): 
-        self.add_header()
-        self.add_footer()
 
         f = self.output_file
         with open(f, 'w') as the_file:
@@ -101,7 +126,7 @@ class setup:
                   'M65 P1 (GAS LINE OFF)\n'
                   'M65 P2 (LASER OFF)\n\n') % (self.move_feed_rate, self.cut_feed_rate)
 
-        self.prepend(header)
+        self.append(header)
 
     def append(self, s):
         self.gcode_string = self.gcode_string + s
