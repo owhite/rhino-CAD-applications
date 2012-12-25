@@ -11,6 +11,7 @@ from decimal import *
 import tkMessageBox
 from subprocess import Popen, PIPE, STDOUT
 import os
+import re
 
 IN_AXIS = os.environ.has_key("AXIS_PROGRESS_BAR")
 
@@ -189,13 +190,14 @@ class Application(Frame):
         return D(s).quantize(P) # if it is a decimal number already
 
     def LoadIniData(self):
-        FileName = self.InputFile
+        FileName = re.sub(r'\.py$', "", os.path.abspath( __file__ )) + '.ini'
+        print FileName
         self.cp=ConfigParser()
         try:
             self.cp.readfp(open(FileName,'r'))
             # f.close()
         except IOError:
-            raise Exception,'NoFileError'
+            raise Exception,'NoFileError : ' % (FileName)
         return
         
     def GetDirectory(self, name):
@@ -288,7 +290,8 @@ class Application(Frame):
             'Brad Hanken\n'
             'Version ' + version)
 
-app = Application()
-app.master.title('G-Code Generator')
-app.mainloop()
+if __name__ == '__main__':
+    app = Application()
+    app.master.title('G-Code Generator')
+    app.mainloop()
 

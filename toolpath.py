@@ -451,9 +451,17 @@ if __name__ == '__main__':
 
     g = gcode.setup(tp)
 
+    p = g.MakePhrase()
+    title = '(' + p + ')' + '\n\n'
+    g.append(title)
+    g.add_header()
+
     for i in gcode_cuts:
         g.write_polyline(i)
 
+    g.add_footer()
+
     g.write_gcode(g)
 
+    print '(' + p + ')'
 
