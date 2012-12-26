@@ -3,12 +3,17 @@ import os
 import sys
 from ConfigParser import *
 
-class setup:
+class Gcode:
     def __init__(self, parent):
+        self.parent = parent
+        self.LoadIniData(parent.ini_file)
+
+    def LoadIniData(self, FileName):
+        self.ini_file = FileName
         self.cp=ConfigParser()
         try:
-            self.cp.readfp(open(parent.ini_file,'r'))
-	# f.close()
+            self.cp.readfp(open(FileName,'r'))
+
         except IOError:
             raise Exception,'NoFileError'
 
@@ -16,10 +21,12 @@ class setup:
         self.dictionary_file = self.cp.get('Gcode', 'dictionary')
         self.move_feed_rate = self.cp.getint('Gcode', 'move_feed_rate')
         self.cut_feed_rate = self.cp.getint('Gcode', 'cut_feed_rate')
-        self.power_setting = self.cp.getint('Gcode', 'power_setting')
         self.dwell_time = self.cp.getfloat('Gcode', 'dwell_time')
-        self.output_file = self.cp.get('Gcode', 'output_file')
         self.use_cut_variable = self.cp.getboolean('Gcode', 'use_cut_variable')
+
+        from os.path import join as pjoin
+        self.output_file = pjoin(self.cp.get('Gcode', 'ncfile_dir'), 
+                                 self.cp.get('Gcode', 'output_file'))
 
         if self.use_cut_variable:
             self.cut_speed = '#<cutfeedrate>'
@@ -61,9 +68,9 @@ class setup:
                        adj[int(adjective_count * random.random())])
         return s.upper()
 
-    def write_gcode(self, g): 
-
+    def write_gcode(self): 
         f = self.output_file
+
         with open(f, 'w') as the_file:
             the_file.write(self.gcode_string)
 

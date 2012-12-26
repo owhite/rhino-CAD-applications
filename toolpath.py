@@ -4,10 +4,10 @@ import os
 import time
 import sys
 import getopt
-import re
 import csv
 import gcode
 import TSP
+import re
 
 from ConfigParser import *
 from shapely.geometry import LineString
@@ -17,13 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 class Toolpath:
     def __init__(self):
-        self.LoadIniData()
-        self.verbose = 0
-        self.total_salesman = 0
-        self.tag = ""
-        self.gcode = ""
-        self.clock_time = "gotta set time"
-        self.tour_executable = "/usr/bin/LKH.UNIX"
+        pass # be happy!
 
     def LoadRawData(self):
         file = self.input_file
@@ -119,8 +113,11 @@ class Toolpath:
     def str2array(self, s):
         return(tuple(int(i) for i in s.split(',')))
 
-    def LoadIniData(self):
-        FileName = re.sub(r'\.py$', "", os.path.abspath( __file__ )) + '.ini'
+    def LoadIniData(self, FileName):
+        self.ini_file = FileName
+        self.verbose = 0
+        self.gcode = ""
+
         self.cp=ConfigParser()
         try:
             self.cp.readfp(open(FileName,'r'))
@@ -129,13 +126,18 @@ class Toolpath:
             raise Exception,'NoFileError'
 
         self.ini_file = FileName
-        self.input_file = self.cp.get('Variables', 'raw_input_file')
-        self.output_file = self.cp.get('Variables', 'output_file')
+
+        from os.path import join as pjoin
+        self.input_file = pjoin(self.cp.get('RawData', 'input_dir'), 
+                                 self.cp.get('RawData', 'raw_input_file'))
+
+        self.output_file = pjoin(self.cp.get('Gcode', 'ncfile_dir'), 
+                                 self.cp.get('Gcode', 'output_file'))
 
         self.parts_layer = self.cp.get('Layers', 'parts_name')
         self.cuts_layer = self.cp.get('Layers', 'cuts_name')
         self.path_layer = self.cp.get('Layers', 'path_name')
-        self.cutpath_layer = self.cp.get('Layers', 'cutpath_name')
+        self.cutspath_layer = self.cp.get('Layers', 'cutspath_name')
 
         self.debug = self.cp.getboolean('Debug', 'debug')
         self.debug_file_name = self.cp.get('Debug', 'debug_file_name')
@@ -144,7 +146,7 @@ class Toolpath:
         self.layer_colors[self.parts_layer] = self.str2array(self.cp.get('Layers', 'parts_color'))
         self.layer_colors[self.cuts_layer] = self.str2array(self.cp.get('Layers', 'cuts_color'))
         self.layer_colors[self.path_layer] = self.str2array(self.cp.get('Layers', 'path_color'))
-        self.layer_colors[self.cutpath_layer] = self.str2array(self.cp.get('Layers', 'cutpath_color'))
+        self.layer_colors[self.cutspath_layer] = self.str2array(self.cp.get('Layers', 'cutspath_color'))
 
         self.iterations = self.cp.getint('TSP', 'iterations')
         self.start_temp = self.cp.getfloat('TSP', 'start_temp')
@@ -339,10 +341,10 @@ class Toolpath:
             # create a path. This will this return an order of the 
             #  center of ring-shaped lines, and the start or end 
             #  points of linear lines
-            print 'running tsp'
             tsp = TSP.TSP(coords = coords, start_temp = temp, alpha = alpha)
             tour = tsp.anneal(locked_points=locked, iterations = iterations)
-                
+            # tsp.report_stats()                
+
         # getting tour is great, but it is not the actual order of lines.
         #  it is the tour of points defined by the centroid
         #  of rings, the start _and_ ends of linear lines.
@@ -389,7 +391,7 @@ class Toolpath:
         cuts = self.LinesByLayer(self.cuts_layer)
     
         # get all cuts
-        cuts_path = self.LinesByLayer(self.cutpath_layer)
+        cuts_path = self.LinesByLayer(self.cutspath_layer)
     
         if len(path) > 1:
             print "there can only be one path to cut parts"
@@ -446,10 +448,12 @@ class Toolpath:
 
 if __name__ == '__main__':
     tp=Toolpath()
+    tp.LoadIniData("./tool_interface.ini")
+
     tp.LoadRawData()
     gcode_cuts = tp.toolpath()
 
-    g = gcode.setup(tp)
+    g = gcode.Gcode(tp)
 
     p = g.MakePhrase()
     title = '(' + p + ')' + '\n\n'
@@ -461,7 +465,6 @@ if __name__ == '__main__':
 
     g.add_footer()
 
-    g.write_gcode(g)
+    g.write_gcode()
 
     print '(' + p + ')'
-

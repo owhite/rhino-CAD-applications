@@ -1,205 +1,76 @@
 #!/usr/bin/env python
-version = '1.0'
-# python toolpath.py
 
+from datetime import datetime
 from Tkinter import *
 from tkFileDialog import *
-from math import *
 from SimpleDialog import *
 from ConfigParser import *
-from decimal import *
 import tkMessageBox
-from subprocess import Popen, PIPE, STDOUT
 import os
-import re
+import toolpath
+import gcode
 
 IN_AXIS = os.environ.has_key("AXIS_PROGRESS_BAR")
 
 class Application(Frame):
-    def __init__(self, master=None):
+    def __init__(self, IniFile, master=None):
         Frame.__init__(self, master, width=700, height=400, bd=1)
         self.grid()
-        self.InputFile = 'nc_files/toolpath.ini'
-        self.LoadIniData()
+        self.ini_file = IniFile
         self.createMenu()
         self.createWidgets()
-
-    def createMenu(self):
-        #Create the Menu base
-        self.menu = Menu(self)
-        #Add the Menu
-        self.master.config(menu=self.menu)
-        #Create our File menu
-        self.FileMenu = Menu(self.menu)
-        #Add our Menu to the Base Menu
-        self.menu.add_cascade(label='File', menu=self.FileMenu)
-        #Add items to the menu
-        self.FileMenu.add_command(label='Quit', command=self.quit)
-        
-        self.EditMenu = Menu(self.menu)
-        self.menu.add_cascade(label='Edit', menu=self.EditMenu)
-        self.EditMenu.add_command(label='Copy', command=self.CopyClpBd)
-        self.EditMenu.add_command(label='Select All', command=self.SelectAllText)
-        self.EditMenu.add_command(label='Delete All', command=self.ClearTextBox)
-        self.EditMenu.add_separator()
-        self.EditMenu.add_command(label='NC Directory', command=self.NcFileDirectory)
-        self.EditMenu.add_command(label='tmp Directory', command=self.TMPFileDirectory)
-        
-        self.HelpMenu = Menu(self.menu)
-        self.menu.add_cascade(label='Help', menu=self.HelpMenu)
-        self.HelpMenu.add_command(label='Help Info', command=self.HelpInfo)
-        self.HelpMenu.add_command(label='About', command=self.HelpAbout)
-
-    def createWidgets(self):
-        
-        self.sp1 = Label(self)
-        self.sp1.grid(row=0)
-        
-        self.st1 = Label(self, text='File location -t')
-        self.st1.grid(row=1, column=0, sticky=E)
-        self.TargetDirVar = StringVar()
-        self.TargetDir = Entry(self, width=30, textvariable=self.TargetDirVar)
-        self.TargetDir.grid(row=1, column=1, sticky=W)
-        self.TargetDir.focus_set()
-        self.TargetDir.insert(0, self.cp.get('Directories', 'target_dir'));
-
-        self.st2 = Label(self, text='Input file -i')
-        self.st2.grid(row=2, column=0, sticky=E)
-        self.TargetNameVar = StringVar()
-        self.TargetName = Entry(self, width=18, textvariable=self.TargetNameVar)
-        self.TargetName.grid(row=2, column=1, sticky=W)
-        self.TargetName.insert(0, self.cp.get('Files', 'target'));
-
-        self.st4 = Label(self, text='Execute ')
-        self.st4.grid(row=3, column=0, sticky=E)
-        self.ExecuteVar = StringVar()
-        self.Execute = Entry(self, width=30, textvariable=self.ExecuteVar)
-        self.Execute.grid(row=3, column=1, sticky=W)
-        self.Execute.insert(0, self.cp.get('Executable', 'toolpathcode'));
-
-        self.st3 = Label(self, text='Laser power -p')
-        self.st3.grid(row=4, column=0, sticky=E)
-        self.LaserPowerVar = StringVar()
-        self.LaserPower = Entry(self, width=5, textvariable=self.LaserPowerVar)
-        self.LaserPower.grid(row=4, column=1, sticky=W)
-        self.LaserPower.insert(0, self.cp.get('Gcode', 'power'));
-
-        self.st5 = Label(self, text='Feedrate -f')
-        self.st5.grid(row=5, column=0, sticky=E)
-        self.FeedrateVar = StringVar()
-        self.Feedrate = Entry(self, width=5, textvariable=self.FeedrateVar)
-        self.Feedrate.grid(row=5, column=1, sticky=W)
-        self.Feedrate.insert(0, self.cp.get('Gcode', 'feedrate'));
-        
-        self.spacer3 = Label(self, text='')
-        self.spacer3.grid(row=6, column=0, columnspan=4)
-        self.g_code = Text(self,width=40,height=10,bd=3)
-        self.g_code.grid(row=7, column=0, columnspan=5, sticky=E+W+N+S)
-        self.tbscroll = Scrollbar(self,command = self.g_code.yview)
-        self.tbscroll.grid(row=7, column=5, sticky=N+S+W)
-        self.g_code.configure(yscrollcommand = self.tbscroll.set) 
-
-        self.sp4 = Label(self)
-        self.sp4.grid(row=8)
-        
-        self.st8=Label(self,text='Units')
-        self.st8.grid(row=0,column=5)
-        UnitOptions=[('Inch',1),('MM',2)]
-        self.UnitVar=IntVar()
-        for text, value in UnitOptions:
-            Radiobutton(self, text=text,value=value,
-                variable=self.UnitVar,indicatoron=0,width=6,)\
-                .grid(row=value, column=5)
-        self.UnitVar.set(1)
-               
-        self.GenButton = Button(self, text='Generate G-Code',command=self.GenCode)
-        self.GenButton.grid(row=8, column=0)
-        
-        self.SaveButton = Button(self, text='Save config',command=self.SaveConfig)
-        self.SaveButton.grid(row=8, column=1)
-
-        if IN_AXIS:
-            self.toAxis = Button(self, text='Write to AXIS and Quit',\
-                command=self.WriteToAxis)
-            self.toAxis.grid(row=8, column=3)
-        
-            self.quitButton = Button(self, text='Quit', command=self.QuitFromAxis)
-            self.quitButton.grid(row=8, column=5, sticky=E)
-        else:
-            self.quitButton = Button(self, text='Quit', command=self.quit)
-            self.quitButton.grid(row=8, column=5, sticky=E)    
-
-    def QuitFromAxis(self):
-        sys.stdout.write("M2 (Face.py Aborted)")
-        self.quit()
-
-    def WriteToAxis(self):
-        sys.stdout.write(self.g_code.get(0.0, END))
-        self.quit()
-
-    def GenCode(self):
-        NcDir = self.cp.get("Directories", "ncfiles")
-        if len(NcDir) == 0:
-            NcDir = self.GetDirectory()
-        self.cp.set("Directories", "ncfiles", NcDir)
-
-        TMPDir = self.cp.get("Directories", "tmp_dir")
-        if len(TMPDir) == 0:
-            TMPDir = self.GetDirectory()
-        self.cp.set("Directories", "tmp_dir", TMPDir)
-
-        process = str(self.ExecuteVar.get()) \
-            + ' -f ' + str(self.FeedrateVar.get()) \
-            + ' -i ' + str(self.TargetNameVar.get()) \
-            + ' -t ' + str(self.TargetDirVar.get()) \
-            + ' -p ' + str(self.LaserPowerVar.get()) \
-            + ' -d ' + self.cp.get("Directories", "ncfiles") \
-            + ' -g thing.ngc'
-
-        self.g_code.delete(1.0,END)
-        self.g_code.insert(END, "CMD: " + process)
-
-        p = Popen(process, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True)
-        output = p.stdout.read()
-
-        self.g_code.insert(END, '\n')
-        for line in output:
-            self.g_code.insert(END, line)
-
-        # for line in p.stderr:
-            #self.g_code.insert(END, line)
-
-    def FToD(self,s): # Float To Decimal
-        """
-        Returns a decimal with 4 place precision
-        valid imputs are any fraction, whole number space fraction
-        or decimal string. The input must be a string!
-        """
-        s=s.strip(' ') # remove any leading and trailing spaces
-        D=Decimal # Save typing
-        P=D('0.0001') # Set the precision wanted
-        if ' ' in s: # if it is a whole number with a fraction
-            w,f=s.split(' ',1)
-            w=w.strip(' ') # make sure there are no extra spaces
-            f=f.strip(' ')
-            n,d=f.split('/',1)
-            return D(D(n)/D(d)+D(w)).quantize(P)
-        elif '/' in s: # if it is just a fraction
-            n,d=s.split('/',1)
-            return D(D(n)/D(d)).quantize(P)
-        return D(s).quantize(P) # if it is a decimal number already
+        self.LoadIniData()
+        self.UpdateAllVars()
+        self.tp = toolpath.Toolpath()
+        self.tp.LoadIniData(self.ini_file)
+        self.gcode = gcode.Gcode(self)
 
     def LoadIniData(self):
-        FileName = re.sub(r'\.py$', "", os.path.abspath( __file__ )) + '.ini'
-        print FileName
+        FileName = self.ini_file
         self.cp=ConfigParser()
         try:
-            self.cp.readfp(open(FileName,'r'))
-            # f.close()
+            fp = open(FileName,'r')
+            self.cp.readfp(fp)
+            fp.close()
         except IOError:
             raise Exception,'NoFileError : ' % (FileName)
         return
         
+    def ReloadConfig(self):
+        self.LoadIniData()
+        self.UpdateAllVars()
+
+    def SaveConfig(self):
+        try:
+            self.cp.set('RawData', 'input_dir', self.InputDirSV.get())
+            self.cp.set('RawData', 'raw_input_file', self.InputNameSV.get())
+
+            self.cp.set('Gcode', 'ncfile_dir', self.NCFileDirSV.get())
+            self.cp.set('Gcode', 'move_feed_rate', self.MoverateSV.get())
+            self.cp.set('Gcode', 'cut_feed_rate', self.CutrateSV.get())
+
+            self.cp.set('TSP', 'start_temp', self.TSPTempSV.get())
+            self.cp.set('TSP', 'alpha', self.TSPAlphaSV.get())
+            self.cp.set('TSP', 'iterations', self.TSPIterationsSV.get())
+
+            fn=open(self.ini_file,'w')
+            self.cp.write(fn)
+            fn.close()
+        except:
+            tkMessageBox.showinfo('Error', 'broke in save config '+ self.ini_file) 
+
+    def InputFileDirectory(self):
+        DirName = self.GetDirectory(self.cp.get("RawData", "input_dir"))
+        if len(DirName)>0:
+            self.cp.set("RawData", "input_dir", DirName)
+            self.InputDirSV.set(self.cp.get('RawData', 'input_dir'))
+
+    def NcFileDirectory(self):
+        DirName = self.GetDirectory(self.cp.get('Gcode', 'ncfile_dir'))
+        if len(DirName)>0:
+            self.cp.set('Gcode', 'ncfile_dir', DirName)
+            self.NCFileDirSV.set(self.cp.get('Gcode', 'ncfile_dir'))
+
     def GetDirectory(self, name):
         if len(name) == 0:
             name = '.'
@@ -207,71 +78,177 @@ class Application(Frame):
         if len(DirName) > 0:
             return DirName 
        
-    def CopyClpBd(self):
-        self.g_code.clipboard_clear()
-        self.g_code.clipboard_append(self.g_code.get(0.0, END))
+    def createMenu(self):
+        #Create the Menu base
+        self.menu = Menu(self)
+        self.master.config(menu=self.menu)
+        # Add File Menu
+        self.FileMenu = Menu(self.menu)
+        self.menu.add_cascade(label='File', menu=self.FileMenu)
+        self.FileMenu.add_command(label='Input Dir', command=self.InputFileDirectory)
+        self.FileMenu.add_command(label='NC Dir   ', command=self.NcFileDirectory)
+        self.FileMenu.add_command(label='Reload', command=self.ReloadConfig)
+        self.FileMenu.add_command(label='Save', command=self.SaveConfig)
 
-    def SaveConfig(self):
-        try:
-            FileName = self.InputFile
-            # nc dir and tmp_dir
-            NcDir = self.cp.get("Directories", "ncfiles")
-            if len(NcDir) == 0:
-                NcDir = self.GetDirectory()
-            self.cp.set("Directories", "ncfiles", NcDir)
+        self.FileMenu.add_command(label='Quit', command=self.quit)
 
-            TMPDir = self.cp.get("Directories", "tmp_dir")
-            if len(TMPDir) == 0:
-                TMPDir = self.GetDirectory()
-            self.cp.set("Directories", "tmp_dir", TMPDir)
+        # Add Help Menu
+        self.HelpMenu = Menu(self.menu)
+        self.menu.add_cascade(label='Help', menu=self.HelpMenu)
+        self.HelpMenu.add_command(label='Help Info', command=self.HelpInfo)
+        self.HelpMenu.add_command(label='About', command=self.HelpAbout)
 
-            self.cp.set("Directories", "tmp_dir", TMPDir)
-            self.cp.set("Directories", "ncfiles", NcDir)
-            self.cp.set("Directories", "target_dir", self.TargetDirVar.get())
-            self.cp.set("Gcode", "feedrate", self.FeedrateVar.get())
-            self.cp.set("Gcode", "power", self.LaserPowerVar.get())
-            self.cp.set("Files", "target", self.TargetNameVar.get())
-            self.cp.set("Executable", "toolpathcode", self.ExecuteVar.get())
-            self.fn=open(FileName,'w')
-            self.cp.write(self.fn)
-            self.fn.close()
-        except:
-            tkMessageBox.showinfo('Error', 'broke in save config')            
+    def UpdateAllVars(self):
+        self.InputDirSV.set(self.cp.get('RawData', 'input_dir'))
+        self.InputNameSV.set(self.cp.get('RawData', 'raw_input_file'))
 
-    def WriteToFile(self):
-        try:
-            NcDir = self.cp.get("Directories", "ncfiles")
-            if len(NcDir)>0:
-                NcDir = self.GetDirectory()
-            self.NewFileName = asksaveasfile(initialdir=self.NcDir,mode='w', \
-                master=self.master,title='Create NC File',defaultextension='.ngc')
-            self.NewFileName.write(self.g_code.get(0.0, END))
-            self.NewFileName.close()
-        except:
-            tkMessageBox.showinfo('Error', 'broke in write to file')            
+        self.NCFileDirSV.set(self.cp.get('Gcode', 'ncfile_dir'))
+        # self.NCFileNameSV.set(self.cp.get('Gcode', 'ncfile_file'))
 
-    def NcFileDirectory(self):
-        DirName = self.GetDirectory(self.cp.get("Directories", "ncfiles"))
-        if len(DirName)>0:
-            self.cp.set("Directories", "ncfiles", DirName)
+        self.CutrateSV.set(self.cp.get('Gcode', 'cut_feed_rate'))
+        self.MoverateSV.set(self.cp.get('Gcode', 'move_feed_rate'))
 
-    def TMPFileDirectory(self):
-        DirName = self.GetDirectory(self.cp.get("Directories", "tmp_dir"))
-        if len(DirName)>0:
-            self.cp.set("Directories", "tmp_dir", DirName)
+        self.TSPTempSV.set(self.cp.get('TSP', 'start_temp'))
+        self.TSPAlphaSV.set(self.cp.get('TSP', 'alpha'))
+        self.TSPIterationsSV.set(self.cp.get('TSP', 'iterations'))
+
+    def createWidgets(self):
+        row = 0
+        self.sp1 = Label(self)
+        self.sp1.grid(row=row)
+        
+        row += 1
+        self.st1 = Label(self, text='Input dir:')
+        self.st1.grid(row=row, column=0, sticky=E)
+
+        self.InputDirSV = StringVar()
+        self.st1 = Label(self, textvariable=self.InputDirSV)
+        self.st1.grid(row=row, column=1, sticky=W)
+
+        row += 1
+        self.st2 = Label(self, text='NC file dir:')
+        self.st2.grid(row=row, column=0, sticky=E)
+
+        self.NCFileDirSV = StringVar()
+        self.st2 = Label(self, textvariable=self.NCFileDirSV)
+        self.st2.grid(row=row, column=1, sticky=W)
+
+        self.st8=Label(self,text='Units')
+        self.st8.grid(row=row,column=4)
+        UnitOptions=[('Inch',1),('MM',2)]
+        self.UnitVar=IntVar()
+        self.UnitVar.set(1)
+        for text, value in UnitOptions:
+            Radiobutton(self, text=text,value=value,
+                variable=self.UnitVar,indicatoron=0,width=6,)\
+                .grid(row=value, column=5)
+
+        row += 1
+        self.st2 = Label(self, text='Input file')
+        self.st2.grid(row=row, column=0, sticky=E)
+        self.InputNameSV = StringVar()
+        self.InputName = Entry(self, width=18, textvariable=self.InputNameSV)
+        self.InputName.grid(row=row, column=1, sticky=W)
+
+        row += 1
+        self.st3 = Label(self, text='Temp')
+        self.st3.grid(row=row, column=0, sticky=E)
+        self.TSPTempSV = StringVar()
+        self.TSPTemp = Entry(self, width=5, textvariable=self.TSPTempSV)
+        self.TSPTemp.grid(row=row, column=1, sticky=W)
+
+        self.st4 = Label(self, text='alpha')
+        self.st4.grid(row=row, column=1, sticky=E)
+        self.TSPAlphaSV = StringVar()
+        self.TSPAlpha = Entry(self, width=5, textvariable=self.TSPAlphaSV)
+        self.TSPAlpha.grid(row=row, column=2, sticky=W)
+
+        row += 1
+        self.st5 = Label(self, text='Reps')
+        self.st5.grid(row=row, column=0, sticky=E)
+        self.TSPIterationsSV = StringVar()
+        self.TSPIterations = Entry(self, width=8, textvariable=self.TSPIterationsSV)
+        self.TSPIterations.grid(row=row, column=1, sticky=W)
+
+        row += 1
+        self.st6 = Label(self, text='')
+        self.st6.grid(row=row, column=1, sticky=E)
+
+        row += 1
+        self.st5 = Label(self, text='Cutrate')
+        self.st5.grid(row=row, column=0, sticky=E)
+        self.CutrateSV = StringVar()
+        self.Cutrate = Entry(self, width=5, textvariable=self.CutrateSV)
+        self.Cutrate.grid(row=row, column=1, sticky=W)
+        
+        self.st6 = Label(self, text='Moverate')
+        self.st6.grid(row=row, column=1, sticky=E)
+        self.MoverateSV = StringVar()
+        self.Moverate = Entry(self, width=5, textvariable=self.MoverateSV)
+        self.Moverate.grid(row=row, column=2, sticky=W)
+        
+        row += 1
+        self.st7 = Label(self, text='')
+        self.st7.grid(row=row, column=1, sticky=E)
+
+        row += 1
+
+        self.results_string = StringVar(value="RESULTS")
+        self.spacer3 = Label(self, textvariable=self.results_string)
+        self.spacer3.grid(row=row, column=0, columnspan=5)
+        
+        row += 1
+               
+        self.GenButton = Button(self, text='Gen G-Code',command=self.GenCode)
+        self.GenButton.grid(row=row, column=0)
+        
+        self.quitButton = Button(self, text='Quit', command=self.quit)
+        self.quitButton.grid(row=row, column=5, sticky=E)    
+
+    def QuitFromAxis(self):
+        sys.stdout.write("M2 (Face.py Aborted)")
+        self.quit()
+
+    def GenCode(self):
+        NcDir = self.cp.get("Gcode", "ncfile_dir")
+        if len(NcDir) == 0:
+            NcDir = self.GetDirectory()
+        self.cp.set("Gcode", "ncfile_dir", NcDir)
+
+        from os.path import join as pjoin
+
+        # set some variables that may have been set by the interface - if they're in the ini
+        #  file they will be overridden by the interface
+        self.tp.input_file = pjoin(self.InputDirSV.get(), self.InputNameSV.get())
+        self.tp.LoadRawData() # loads up the input file
+
+        # do this in case the user manually changes the ini_file
+        self.tp.LoadIniData(self.ini_file)
+        self.gcode.LoadIniData(self.ini_file)
+
+        # other variables from the ini file that may be edited by the interface
+        self.tp.start_temp = float(self.TSPTempSV.get())
+        self.tp.alpha = float(self.TSPAlphaSV.get())
+        self.tp.iterations = int(self.TSPIterationsSV.get())
+        self.gcode.output_file = pjoin(self.NCFileDirSV.get(), self.cp.get("Gcode", "output_file"))
+
+        gcode_cuts = self.tp.toolpath()
+
+        # this gets stuck on the top line of the gcode, and is displayed to user
+        p = self.gcode.MakePhrase()
+        title = '(' + p + ')' + '\n\n'
+        self.gcode.append(title)
+        self.gcode.add_header()
+
+        for i in gcode_cuts:
+            self.gcode.write_polyline(i)
+
+        self.gcode.add_footer()
+        self.gcode.write_gcode() # and off the code goes....
+        self.results_string.set('(' + p + ')')
 
     def Simple(self):
         tkMessageBox.showinfo('Feature', 'Sorry this Feature has\nnot been programmed yet.')
-
-    def ClearTextBox(self):
-        self.g_code.delete(1.0,END)
-
-    def SelectAllText(self):
-        self.g_code.tag_add(SEL, '1.0', END)
-
-    def SelectCopy(self):
-        self.SelectAllText()
-        self.CopyClpBd()
 
     def HelpInfo(self):
         SimpleDialog(self,
@@ -283,15 +260,14 @@ class Application(Frame):
             buttons=['Ok'],
             default=0,
             title='User Info').go()
+
     def HelpAbout(self):
-        tkMessageBox.showinfo('Help About', 'Programmed by\n'
-            'Big John T (AKA John Thornton)\n'
-            'Rick Calder\n'
-            'Brad Hanken\n'
-            'Version ' + version)
+        tkMessageBox.showinfo('Help About', 'SVN site:\n'
+            'https://code.google.com/p/laser-code/\n')
+
 
 if __name__ == '__main__':
-    app = Application()
+    app = Application("./tool_interface.ini")
     app.master.title('G-Code Generator')
     app.mainloop()
 
