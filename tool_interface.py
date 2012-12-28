@@ -244,8 +244,12 @@ class Application(Frame):
             self.gcode.write_polyline(i)
 
         self.gcode.add_footer()
-        self.gcode.write_gcode() # and off the code goes....
+        # send the gcode to disk. 
+        self.gcode.write_gcode()
+
+        # display the unique phrase to the user
         self.results_string.set('(' + p + ')')
+
 
     def Simple(self):
         tkMessageBox.showinfo('Feature', 'Sorry this Feature has\nnot been programmed yet.')

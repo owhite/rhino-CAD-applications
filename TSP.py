@@ -36,7 +36,11 @@ from math import sqrt
 # Note: there are several functions that have the same name as John's
 #  original code that operate somewhat differently as his.
 #
-# TSP Licensing: John Montgomery uses:
+# This is stochastic. It does not always return the same thing, 
+#  it does not always return the same thing. If you want it to do that
+#  call random.seed(1)
+# 
+# TSP Licensing. John Montgomery uses:
 #   http://creativecommons.org/licenses/by/3.0/ Which is
 #   super-awesome. This means This means you can use the code 
 #   for more or less any purpose you want, but must provide 
@@ -46,7 +50,10 @@ class TSP:
     def __init__(self, *args, **kwargs):
         self.reset()
         self.handle_opts(kwargs)
+        # random.seed(1)
 
+    # This makes sure everything has been sent
+    #  to the alrgorithm before calling it. 
     def handle_opts(self, kwargs):
 
         if kwargs.get('coords', None) != None:
@@ -64,6 +71,8 @@ class TSP:
         if kwargs.get('iterations', None) != None:
             self.iterations = kwargs.get('iterations')
 
+    # Not tested. It's meant to be called when the user
+    #   lots of new parameters.
     def reset(self):
         self.best=None
         self.best_score=None
@@ -74,7 +83,6 @@ class TSP:
         self.current=None
         self.iterations=None
         self.matrix = None
-        
 
     def check(self):
         if self.coords is None:
@@ -97,8 +105,8 @@ class TSP:
         self.current=range(len(coords)) # the current tour of points
         self.matrix = self.cartesian_matrix(coords)
     
+    # Total up the total length of the tour based on the distance matrix
     def objective_function(self,solution):
-        '''total up the total length of the tour based on the distance matrix'''
         score=0
         num_cities=len(solution)
         for i in range(num_cities):
@@ -147,9 +155,9 @@ class TSP:
             for j in self.rand_seq(size,positions):
                 yield (i,j)
     
+    # Return all variations where the 
+    #  section between two cities are swappedd
     def reversed_sections(self):
-        '''return all variations where the 
-        section between two cities are swappedd'''
         positions = self.find_locked_points()
         for i,j in self.all_pairs(len(self.current), positions):
             # print 'ij %d %d' % (i, j)
@@ -170,8 +178,8 @@ class TSP:
         #  [pos1, pos2, pos3]
         #  The locked_points refer the comma's separating the positions
         #  [,pos1, pos2, pos3,]. 
-        # there was not a strong logical reason for doing this, it
-        #  just was a winner over a couple other attempts. 
+        # there was not a strong logical reason for doing this, this
+        #  just won compared to a couple other attempts. 
         l = []
         list = self.current
         for i in self.locked_points:
@@ -181,18 +189,18 @@ class TSP:
             if p1 < p2:
                 if (p2 - p1) != 1:
                     print "p1 and p2 not next to each other"
-                    # sys.exit(1)
+                    sys.exit(1)
                 l.append(p2)
             else:
                 if (p1 - p2) != 1:
                     print "p2 and p1 not next to each other"
-                    # sys.exit(1)
+                    sys.exit(1)
                 l.append(p1)
         return sorted(l)
 
+    # create a distance matrix for the city coords 
+    #   that uses straight line distance
     def cartesian_matrix(self,coords):
-        '''create a distance matrix for the city coords 
-        that uses straight line distance'''
         matrix={}
         for i,(x1,y1) in enumerate(coords):
             for j,(x2,y2) in enumerate(coords):
@@ -201,10 +209,10 @@ class TSP:
                 matrix[i,j]=dist
         return matrix
 
+    # read coordinates file return the distance matrix.
+    #  coords should be stored as comma separated floats, 
+    #  one x,y pair per line.
     def read_coords(self,coord_file):
-        ''' read coordinates file return the distance matrix.
-        coords should be stored as comma separated floats, 
-        one x,y pair per line. '''
         coords=[]
         for line in coord_file:
             x,y=line.strip().split(',')
@@ -268,6 +276,7 @@ class TSP:
         print self.alpha
         print self.iterations
 
+    # Where all the fun happens.
     def anneal(self, *args, **kwargs):
         self.handle_opts(kwargs)
         current_score=self.objective_function(self.current)

@@ -19,6 +19,169 @@ class Toolpath:
     def __init__(self):
         pass # be happy!
 
+    def DrawPartsAndCuts(self, img_file, things):
+        padding=20
+
+        img=Image.new("RGB",(self.png_width + 2 * padding,
+                             self.png_height + 2 * padding),
+                      color=(255,255,255))
+
+        if len(things) == 0:
+            print "nothing to draw"
+            return
+
+        minx = maxx = things[0]['part'].coords[0][0]
+        miny = maxy = things[0]['part'].coords[0][1]
+        for i in things:
+            x1, y1, x2, y2 = things[i]['part'].bounds
+            print things[i]['part'].bounds
+            minx = min(minx, x1)
+            miny = min(miny, y1)
+            maxx = max(maxx, x2)
+            maxy = max(maxy, y2)
+            print '%lf %lf :: %lf %lf' % (minx, miny, maxx, maxy)
+
+            for j in things[i]['cuts']:
+                x1, y1, x2, y2 = j.bounds
+                minx = min(minx, x1)
+                miny = min(miny, y1)
+                maxx = max(maxx, x2)
+                maxy = max(maxy, y2)
+
+
+        size = max((maxx - minx), (maxy - miny))
+        print '%lf %lf' % ((maxx - minx), (maxy - miny))
+        if (maxx - minx) > (maxy - miny):
+            inc = self.png_height / size
+            print 'here1'
+        else:
+            inc = self.png_height / size
+            print 'here2'
+
+        print inc * (maxx - minx)
+        print inc * (maxy - miny)
+        minx = minx * inc
+        miny = miny * inc
+
+        for i in things:
+            things[i]['part'] = self.TransformLine(things[i]['part'], inc, minx, miny, padding)
+            l = []
+            for j in things[i]['cuts']:
+                l.append(self.TransformLine(j, inc, minx, miny, padding))
+            things[i]['cuts'] = l
+
+        font=ImageFont.load_default()
+        d=ImageDraw.Draw(img);
+        black = (0,0,0)
+
+        parts_color = self.layer_colors['PARTS']
+        cuts_color = self.layer_colors['CUTS']
+
+        width = 1
+        oldpt = self.TransformCoords((0,0), inc, minx, miny, padding)
+
+        for i in things:
+            for j in things[i]['cut_tour']:
+                line = things[i]['cuts'][j]
+                newpt = self.DrawLine(d, line, cuts_color, width)
+                d.line((oldpt, newpt),fill=black, width = 1)
+                oldpt = newpt
+
+            newpt= self.DrawLine(d, things[i]['part'], parts_color, width)
+            d.line((oldpt, newpt),fill=black, width = 1)
+            oldpt = things[i]['part'].coords[0]
+
+        img.save(img_file, "PNG")
+
+    def DrawLine(self, draw, line, color, width):
+        x1 = line.coords[0][0]
+        y1 = line.coords[0][1]
+        for i in line.coords[1:]:
+            (x2, y2) = i
+            draw.line((int(x1),int(y1),int(x2),int(y2)),fill=color, width = 1)
+            x1 = x2
+            y1 = y2
+        return x1, y1
+
+    def TransformLine(self, line, inc, minx, miny, padding):
+        j = []
+        for c in list(line.coords):
+            j.append(self.TransformCoords(c, inc, minx, miny, padding))
+
+        return LineString(j)
+
+    def TransformCoords(self, coords, inc, minx, miny, padding):
+        (x,y) = coords
+        x = int((x * inc) - minx) + padding                
+        y = (self.png_height - int((y * inc) - miny)) + padding
+        return((x,y))
+
+    def DrawRawData(self, img_file):
+
+        padding=20
+
+        img=Image.new("RGB",(self.png_width + 2*padding,
+                             self.png_height + 2*padding),
+                      color=(255,255,255))
+
+        # shift all coords in a bit
+        tmp1 = []
+        first_time = 1
+        for i, l in enumerate(self.polygons):
+            coords = self.polygons[i]['data'].coords
+            new_coords = []
+            for (x,y) in coords:
+                if first_time:
+                    maxx,maxy=x,y
+                    minx,miny=x,y
+                minx=min(x,minx)
+                miny=min(y,miny)
+                maxx=max(x,maxx)
+                maxy=max(y,maxy)
+                new_coords.append((x,y))
+                first_time = 0
+            tmp1.append(new_coords)
+
+        size = max((maxx - minx), (maxy - miny))
+        if (maxx - minx) > (maxy - miny):
+            inc = self.png_width / size
+        else:
+            inc = self.png_height / size
+
+        minx = minx * inc
+        miny = miny * inc
+
+        tmp2 = []
+        for i in tmp1:
+            j = []
+            for (x,y) in i:
+                x = int((x * inc) - minx) + padding                
+                # flips the image
+                y = (self.png_height - int((y * inc) - miny)) + padding
+                j.append((x,y))
+            tmp2.append(j)
+            
+        font=ImageFont.load_default()
+        d=ImageDraw.Draw(img);
+        inc = 0
+        for coords in tmp2:
+            width = 1
+            if self.polygons[inc]['layer'] == 'CUTS_PATH':
+                width = 2
+            color = self.layer_colors[self.polygons[inc]['layer']]
+            num = len(coords)
+            if len(coords) != 0:
+                (x, y) = coords[0]
+                for i,q in enumerate(coords):
+                    if i == num - 1:
+                        break
+                    x1,y1=coords[i]
+                    x2,y2=coords[i+1]
+                    d.line((x1,y1,x2,y2),fill=color, width = width)
+            inc += 1
+
+        img.save(img_file, "PNG")
+
     def LoadRawData(self):
         file = self.input_file
         self.polygons = {}
@@ -55,61 +218,6 @@ class Toolpath:
         self.polygons[inc]['layer'] = layer
         self.polygons[inc]['data'] = line
 
-    def DrawRawData(self, img_file):
-        padding=20
-        # shift all coords in a bit
-        tmp1 = []
-        first_time = 1
-        for i, l in enumerate(self.polygons):
-            coords = self.polygons[i]['data'].coords
-            new_coords = []
-            for (x,y) in coords:
-                if first_time:
-                    maxx,maxy=x,y
-                    minx,miny=x,y
-                minx=min(x,minx)
-                miny=min(y,miny)
-                maxx=max(x,maxx)
-                maxy=max(y,maxy)
-                new_coords.append((x,y))
-                first_time = 0
-            tmp1.append(new_coords)
-
-        inc_x = 640 / (maxx - minx)
-        inc_y = 400 / (maxy - miny)
-
-        minx = minx * inc_x
-        miny = miny * inc_y
-
-        tmp2 = []
-        for i in tmp1:
-            j = []
-            for (x,y) in i:
-                x = int((x * inc_x) - minx) + padding                
-                y = (400 - int((y * inc_y) - miny)) + padding
-                j.append((x,y))
-            tmp2.append(j)
-            
-        img=Image.new("RGB",(640 + 2*padding,400 + 2*padding),color=(255,255,255))
-        font=ImageFont.load_default()
-        d=ImageDraw.Draw(img);
-        inc = 0
-        for coords in tmp2:
-            width = 1
-            if self.polygons[inc]['layer'] == 'CUTS_PATH':
-                width = 2
-            color = self.layer_colors[self.polygons[inc]['layer']]
-            num = len(coords)
-            for i,q in enumerate(coords):
-                if i == num - 1:
-                    break
-                x1,y1=coords[i]
-                x2,y2=coords[i+1]
-                d.line((x1,y1,x2,y2),fill=color, width = width)
-            inc += 1
-
-        img.save(img_file, "PNG")
-
     def str2array(self, s):
         return(tuple(int(i) for i in s.split(',')))
 
@@ -140,7 +248,10 @@ class Toolpath:
         self.cutspath_layer = self.cp.get('Layers', 'cutspath_name')
 
         self.debug = self.cp.getboolean('Debug', 'debug')
+        self.debug_pic = self.cp.getboolean('Debug', 'draw_debug_pic')
         self.debug_file_name = self.cp.get('Debug', 'debug_file_name')
+        self.png_width = self.cp.getint('Debug', 'png_width')
+        self.png_height = self.cp.getint('Debug', 'png_height')
 
         self.layer_colors = {}
         self.layer_colors[self.parts_layer] = self.str2array(self.cp.get('Layers', 'parts_color'))
@@ -183,20 +294,23 @@ class Toolpath:
                 if d < pt1.distance(pt2):
                     d = pt1.distance(pt2)
         else:
-            print 'dunno what intersection pass me'
+            print 'dunno what intersection passed me'
         return d
 
-    def OrderLinesUsingPath(self, lines, path, start):
+    def OrderLinesUsingPath(self, lines, path):
         order = []
         # tries to figure out where a user defined path interects with all your
         #  objects, to determine the order that objects should be cut
+
         if len(lines) == 0:
             # there are no lines to order
             print "no lines sent to OrderCutsUsingPath"
+            return order, path, parts
         else: 
             # go through all the segments of the path
             #  and get the distances of things it hit on segment
             coords = path.coords
+            start = coords[0]
             num = len(coords)
             results = {}
             dis = 0 # this accumulates distance along the path
@@ -218,25 +332,26 @@ class Toolpath:
             import operator
             [order.append(i[0]) for i in sorted(results.iteritems(), key=operator.itemgetter(1))]
                 
-            # now we have the order, clean it up a little
-            order, path, parts = self.OptimizePartsFromOrder(lines, order, start)
+            # now we have the order, clean up linear parts a little
+            #   dont do this if the TSP algorithm was used.
+            order, path, parts = self.OptimizeLinearPartsFromOrder(lines, order, start)
 
             # this returns reversed lines in cases where it makes a better
-            # tour. it does not delete the lines that were not in the tour
+            # tour. it does not delete the lines that were not in the tour. 
             return order, path, parts
 
     # this works okay-ish. Did see some examples of picking
     #  the nearest start point, at the expense of the distance
-    #  to the next part. Next implementation should look ahead
-    def OptimizePartsFromOrder(self, lines, order, start):
-        # find nearest thing to start, rotate the order of the tour
-        first = self.GetNearestCenterOrEnd(lines, order, start)
+    #  to the next part because the implementation doesnt look ahead.
+    # This function is not needed if the path was defined using TSP,
+    #  only when the user defined an order be explicitly supplying
+    #  a cuts_path or part_path. 
+    def OptimizeLinearPartsFromOrder(self, lines, order, pos):
+        first = self.GetNearestCenterOrEnd(lines, order, pos)
         i = order.index(first)
         order = order[i:] + order[:i]
 
-        pos = start
-        c = [start]
-        c.append(start)
+        c = []
         for i in order:
             line = lines[i]
             if line.is_ring: 
@@ -252,7 +367,9 @@ class Toolpath:
                 pos = (line.coords[-1])
 
         #  path is mostly used for debugging and drawing. 
-        path = LineString(c)        
+        path = LineString()        
+        if len(c) > 1:
+            path = LineString(c)        
         return order, path, lines
 
     def GetNearestCenterOrEnd(self, lines, order, start):
@@ -318,18 +435,14 @@ class Toolpath:
         return coords, info, locked
 
     # works pretty good. One issue is it does not 'cut' rings to find
-    #  the optimal place to enter into them. Another issue is it does
-    #  not base the shortest path on the starting position, because 
-    #  it adds in the starting position after it does the tsp. 
-    def OrderLines(self, lines, start, temp, alpha, iterations):
+    #  that will be optimized later. 
+    def OrderLines(self, lines, temp, alpha, iterations):
         tour = []
         # tries to figure out an order of lines to be cut
         #  using the traveling saleman algorithm
-
         coords, info, locked = self.GatherCenterAndEndCoords(lines)
 
         if len(lines) == 0:
-            print "no lines sent to OrderLines"
             tour = []
         elif len(lines) == 1:
             tour = [0]
@@ -358,100 +471,243 @@ class Toolpath:
                     lines[id] = self.ReverseLine(lines[id])
 
         path = LineString()
-        # order now generated, but it doesnt know where the start is
-        #  get nearest thing to start, rotate the order
-        if len(order) != 0:
-            first = self.GetNearestCenterOrEnd(lines, order, start)
-            i = order.index(first)
-            order = order[i:] + order[:i]
+        # all that is done, now just collect the points to create the path
+        #  this is mostly used for debugging and drawing. 
+        c = []
+        for i in order:
+            if lines[i].is_ring: 
+                c.append((lines[i].centroid.x, lines[i].centroid.y))
+            else:
+                c.append(lines[i].coords[0]) 
+                c.append(lines[i].coords[-1]) 
+        path = LineString()
+        if len(c) > 1:
+            path = LineString(c) # will this break if len(order) = 0?
 
-            # all that is done, now just collect the points to create the path
-            #  this is mostly used for debugging and drawing. 
-            c = [start]
-            for i in order:
-                if lines[i].is_ring: 
-                    c.append((lines[i].centroid.x, lines[i].centroid.y))
-                else:
-                    c.append(lines[i].coords[0]) 
-                    c.append(lines[i].coords[-1]) 
-
-            path = LineString(c)        
-            # this returns reversed lines in cases where it makes a better
-            # tour. it does not delete the lines that were not in the tour
+        # re: lines being returned. in cases where it makes a better tour,
+        #  this reverses the -linear- lines to so the start and end points
+        #  make a better tour. The rings are not changed
         return order, path, lines
 
+    def GetLinesInRegion(self, region, lines):
+        region = Polygon(region.coords) # convert for intersect to work
+        list = [] 
+        for j in lines:
+            if region.intersects(j): # shapely has lots of functions for this.
+                list.append(j)       #  intersects() seemed to work best.
+        return list
+
+    def CreateGcode(self, tours, lines):
+        gcode_cuts.append(list(part.coords))
+        tours.append(tour) # collect up the cuts in each part
+        for j in tour:
+            gcode_cuts.append(list(cuts_in_part[j].coords))
+
     def toolpath(self):
+        tours = [] 
+
         # check if user supplied a line connecting the parts
         path = self.LinesByLayer(self.path_layer)
-    
         # get all the parts
         parts = self.LinesByLayer(self.parts_layer)
-    
         # get all cuts
         cuts = self.LinesByLayer(self.cuts_layer)
-    
-        # get all cuts
+        # get all cut_paths
         cuts_path = self.LinesByLayer(self.cutspath_layer)
     
+        order = [] # the order of parts to be handled
         if len(path) > 1:
             print "there can only be one path to cut parts"
         elif len(path) == 1:
-            order, path, parts = self.OrderLinesUsingPath(parts,
-                                                          path[0],
-                                                          (0.0,0.0))
+            start = path[0].coords[0]
+            part_tour, path, parts = self.OrderLinesUsingPath(parts,
+                                                          path[0])
         else:
-            order, path, parts = self.OrderLines(parts, (0.0,0.0),
+            start = (0.0,0.0)
+            part_tour, path, parts = self.OrderLines(parts, 
                                                  self.start_temp,
                                                  self.alpha,
                                                  self.iterations)
-        # do this to debug and have a look at the part path
-        if self.debug:
-            self.AddLine(path, 'PART_PATH')
-
-        gcode_cuts = [] # list to export all cuts to gcode
         cut_path = None
-        for i in order:
+        cut_groups = {}
+        count = 0
+        for i in part_tour:
             part = parts[i]
-            gcode_cuts.append(list(part.coords))
-            region = Polygon(part.coords)
-            cuts_in_part = [] 
-            for j in cuts:
-                if region.intersects(j):
-                    cuts_in_part.append(j)
-            for j in cuts_path:
-                if region.intersects(j):
-                    cut_path = j
+
+            cut_groups[count] = {}
+            cut_groups[count]['part'] = part
+
+            cuts_in_part = self.GetLinesInRegion(part, cuts)
+            cut_groups[count]['cuts'] = cuts_in_part
+ 
+            p = self.GetLinesInRegion(part, cuts_path)
+            if len(p) != 0:
+                cut_path = p[0] # assume there is only one
     
-            start = (0.0,0.0) # start is goofy. could be based on actual path
-                              #  of parts getting cut
             if cut_path is not None:
                 tour, path, cuts_in_part = self.OrderLinesUsingPath(cuts_in_part,
-                                                                    cut_path,
-                                                                    start)
+                                                                    cut_path)
             else:
                 tour, path, cuts_in_part = self.OrderLines(cuts_in_part,
-                                                           start,
                                                            self.start_temp,
                                                            self.alpha, 
                                                            self.iterations)
-            for j in tour:
-                gcode_cuts.append(list(cuts_in_part[j].coords))
-
             if self.debug:
                 self.AddLine(path, 'CUTS_PATH')
 
-        # do this to debug and have a look paths and parts
-        if self.debug:
-            self.DrawRawData(self.debug_file_name)
+            cut_groups[count]['cut_tour'] = tour
+            count += 1
 
-        return gcode_cuts
+        cut_groups = self.OptimizeAllFromTour(cut_groups)
+        return cut_groups
+
+    # perform one more optimization armed with knowledge of all the tours:
+    #  change the order based on the path, and it cuts rings at the 
+    #  appropriate entry point.
+    def OptimizeAllFromTour(self, things):
+        parts_tour = []
+        parts = []
+        for i in things:
+            parts_tour.append(i)
+            parts.append(things[i]['part'])
+
+        # find the best par to start with, then reorder the parts
+        #  based on that information
+        first = self.GetNearestCenterOrEnd(parts, parts_tour, (0.0,0.0))
+        i = parts_tour.index(first)
+        parts_tour = parts_tour[i:] + parts_tour[:i]
+
+        # got the order, now cut parts based on the order
+        parts = self.RotateRingsUsingPath(parts_tour, parts)
+
+        # reorganize the structure that came in
+        count = 0
+        final = {}
+        for i in parts_tour:
+            final[count] = {}
+            final[count]['part'] = parts[i]
+            final[count]['cuts'] = things[i]['cuts']
+            final[count]['cut_tour'] = things[i]['cut_tour']
+            count += 1
+
+        things = None # get rid of it in case it was big
+
+        # now clean up all the cuts in each part.
+        # use the part start coords for rotation to re-order the cuts
+        for i in final:
+            # print final[i]['part']
+            start = final[i]['part'].coords[0]
+            if len(final[i]['cut_tour']) != 0:
+                cut_tour = final[i]['cut_tour']
+                cuts = final[i]['cuts']
+                n = self.GetNearestCenterOrEnd(cuts, cut_tour, start)
+                idx = cut_tour.index(n)
+                # rotate the order
+                final[i]['cut_tour'] = cut_tour[idx:] + cut_tour[:idx]
+                # and since the cuts get done first, reverse them
+                #  so the last one cut is near staring point of part
+                final[i]['cut_tour'].reverse()
+                # got the order, now recut parts
+                final[i]['cuts'] = self.RotateRingsUsingPath(final[i]['cut_tour'], cuts)
+
+        return final
+
+    def RotateRingsUsingPath(self, tour, rings):
+        new = range(len(tour))
+        if len(tour) == 1: # a part came down all by it's ownsome
+            new[0] = rings[0]
+            if rings[0].is_ring:
+                l = LineString((new[0].centroid.coords[0], (0,0)))
+                pt = self.GetIntersectionLocation(new[0], l)
+                distance = new[0].project(pt)
+                new[0] = self.CutLine(new[0], distance)
+        if len(tour) > 1:
+            new = range(len(tour))
+            # compare first one to second one
+            new[tour[0]] = self.CutRingAtNearestPoint(rings[tour[0]], 
+                                                      rings[tour[1]])
+            # for the rest, compare n to n - 1
+            for i,j in enumerate(tour[1:]):
+                new[tour[i+1]] = self.CutRingAtNearestPoint(rings[tour[i+1]], 
+                                                            rings[tour[i]])
+        return new
+    
+    def CutRingAtNearestPoint(self, r1, r2):
+        #  if first object is a ring
+        #    draw a line between two objects. 
+        #    find where line intersects the first object.
+        #    'cut' the ring at that intersection.
+        if r1.is_ring == False: 
+            return r1 # do nothing
+
+        if r2.is_ring:
+            l = LineString((r1.centroid.coords[0], r2.centroid.coords[0]))
+        else:
+            l = LineString((r1.centroid.coords[0], r2.coords[0]))
+
+        pt = self.GetIntersectionLocation(r1, l)
+        distance = r1.project(pt)
+        r1 = self.CutLine(r1, distance)
+        
+        return r1
+
+    def CutLine(self, line, distance):
+        # Cuts a line after distance traveled along line from its starting point
+        if distance <= 0.0 or distance >= line.length:
+            return [LineString(line)]
+        coords = list(line.coords)
+        count = 2
+        d = LineString(coords[:count]).length
+        while d < distance:
+            d = LineString(coords[:count]).length
+            count += 1
+
+        if d == distance:
+            count += 1
+        else:
+            diff = distance - LineString(coords[:count-2]).length
+            pt = LineString((coords[count-3], 
+                             coords[count-2])).interpolate(diff)
+            coords.insert(count - 3, pt.coords[0])
+
+        coords = coords[:-1]
+        
+        return LineString(coords[count-3:] + coords[:count-2])
+
+    # returns the point where line1 crosses line2
+    def GetIntersectionLocation(self, l1, l2):
+        x = l1.intersection(l2)
+        # shapley's intersections can return a lot of things, see docs
+        if x.wkt == 'GEOMETRYCOLLECTION EMPTY':
+            pass # return nothing
+        elif re.match('^POINT', x.wkt): 
+            pt = Point(x.coords[0])
+        elif re.match('^MULTI', x.wkt): 
+            # abitrarily pick one point
+            pt = Point(x[0].coords[0])
+        else:
+            print 'dunno what intersection passed me'
+
+        return pt
 
 if __name__ == '__main__':
     tp=Toolpath()
     tp.LoadIniData("./tool_interface.ini")
 
+    import random
+
     tp.LoadRawData()
-    gcode_cuts = tp.toolpath()
+
+    all_lines = tp.toolpath()
+
+    # do this to debug and have a look paths and parts
+    if tp.debug_pic:
+        tp.DrawRawData(tp.debug_file_name)
+        pass
+
+    tp.DrawPartsAndCuts("thing2.png", all_lines)
+
+    sys.exit(1)
 
     g = gcode.Gcode(tp)
 
