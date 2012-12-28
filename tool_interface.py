@@ -217,8 +217,9 @@ class Application(Frame):
 
         from os.path import join as pjoin
 
-        # set some variables that may have been set by the interface - if they're in the ini
-        #  file they will be overridden by the interface
+        # set some variables that may have been set by the interface 
+        #  - if they're in the ini file they will be overridden 
+        #  by the interface
         self.tp.input_file = pjoin(self.InputDirSV.get(), self.InputNameSV.get())
         self.tp.LoadRawData() # loads up the input file
 
@@ -231,6 +232,8 @@ class Application(Frame):
         self.tp.alpha = float(self.TSPAlphaSV.get())
         self.tp.iterations = int(self.TSPIterationsSV.get())
         self.gcode.output_file = pjoin(self.NCFileDirSV.get(), self.cp.get("Gcode", "output_file"))
+        self.gcode.move_feed_rate = self.MoverateSV.get()
+        self.gcode.cut_feed_rate = self.CutrateSV.get()
 
         gcode_cuts = self.tp.toolpath()
 
@@ -241,7 +244,11 @@ class Application(Frame):
         self.gcode.add_header()
 
         for i in gcode_cuts:
-            self.gcode.write_polyline(i)
+            for j in gcode_cuts[i]['cut_tour']:
+                line = gcode_cuts[i]['cuts'][j].coords
+                self.gcode.write_polyline(line)
+            line = gcode_cuts[i]['part'].coords
+            self.gcode.write_polyline(line)
 
         self.gcode.add_footer()
         # send the gcode to disk. 
