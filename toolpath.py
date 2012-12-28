@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import os
-import time
 import sys
 import getopt
 import csv
@@ -19,6 +18,9 @@ class Toolpath:
     def __init__(self):
         pass # be happy!
 
+    # this is like DrawRawData but it works better and
+    #  adds lines and other information to show the path
+    #  being cut
     def DrawPartsAndCuts(self, img_file, things):
         padding=20
 
@@ -32,14 +34,16 @@ class Toolpath:
 
         minx = maxx = things[0]['part'].coords[0][0]
         miny = maxy = things[0]['part'].coords[0][1]
+        
+        minx = miny = 0
+
         for i in things:
             x1, y1, x2, y2 = things[i]['part'].bounds
-            print things[i]['part'].bounds
+            # print things[i]['part'].bounds
             minx = min(minx, x1)
             miny = min(miny, y1)
             maxx = max(maxx, x2)
             maxy = max(maxy, y2)
-            print '%lf %lf :: %lf %lf' % (minx, miny, maxx, maxy)
 
             for j in things[i]['cuts']:
                 x1, y1, x2, y2 = j.bounds
@@ -48,20 +52,9 @@ class Toolpath:
                 maxx = max(maxx, x2)
                 maxy = max(maxy, y2)
 
-
-        size = max((maxx - minx), (maxy - miny))
-        print '%lf %lf' % ((maxx - minx), (maxy - miny))
-        if (maxx - minx) > (maxy - miny):
-            inc = self.png_height / size
-            print 'here1'
-        else:
-            inc = self.png_height / size
-            print 'here2'
-
-        print inc * (maxx - minx)
-        print inc * (maxy - miny)
-        minx = minx * inc
-        miny = miny * inc
+        inc = self.png_width / (maxx - minx)
+        if (inc * maxy) > self.png_height:
+            inc = self.png_height / (maxy - miny)
 
         for i in things:
             things[i]['part'] = self.TransformLine(things[i]['part'], inc, minx, miny, padding)
@@ -70,7 +63,10 @@ class Toolpath:
                 l.append(self.TransformLine(j, inc, minx, miny, padding))
             things[i]['cuts'] = l
 
-        font=ImageFont.load_default()
+        
+        font = ImageFont.load_default()
+        font = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Courier_New_Italic.ttf", 40)
+
         d=ImageDraw.Draw(img);
         black = (0,0,0)
 
@@ -80,6 +76,7 @@ class Toolpath:
         width = 1
         oldpt = self.TransformCoords((0,0), inc, minx, miny, padding)
 
+        count = 0
         for i in things:
             for j in things[i]['cut_tour']:
                 line = things[i]['cuts'][j]
@@ -88,10 +85,23 @@ class Toolpath:
                 oldpt = newpt
 
             newpt= self.DrawLine(d, things[i]['part'], parts_color, width)
+            self.PlaceLabel(d, things[i]['part'], count, font)
             d.line((oldpt, newpt),fill=black, width = 1)
             oldpt = things[i]['part'].coords[0]
+            count += 1
 
         img.save(img_file, "PNG")
+
+    def PlaceLabel(self, draw, line, num, font):
+        (x1,y1,x2,y2) = line.bounds
+        x = x1 + ((x2 - x1) * .9)
+        y = y1 + ((y2 - y1) * .9)
+        s = str(num)
+        w, h = draw.textsize(s, font=font)
+        x = x - w
+        y = y - h
+        draw.text((x,y), s, font = font, fill="blue")
+        return x, y
 
     def DrawLine(self, draw, line, color, width):
         x1 = line.coords[0][0]
@@ -112,8 +122,8 @@ class Toolpath:
 
     def TransformCoords(self, coords, inc, minx, miny, padding):
         (x,y) = coords
-        x = int((x * inc) - minx) + padding                
-        y = (self.png_height - int((y * inc) - miny)) + padding
+        x = int((x - minx) * inc) + padding
+        y = (self.png_height - int((y - miny) * inc)) + padding
         return((x,y))
 
     def DrawRawData(self, img_file):
@@ -185,6 +195,7 @@ class Toolpath:
     def LoadRawData(self):
         file = self.input_file
         self.polygons = {}
+        flag = True
         try:
             inc = 0
             done = {}
@@ -197,6 +208,8 @@ class Toolpath:
                         coords.append(pt)
                         self.polygons[inc] = {}
                         self.polygons[inc]['layer'] = layer
+                        if layer == self.parts_layer:
+                            flag = False
                         if row[0] not in done: # its new
                             self.polygons[inc]['data'] = LineString(coords)
                             inc += 1
@@ -205,9 +218,12 @@ class Toolpath:
                     done[row[0]] = 1
                     layer = row[1]
                     pt = (float(row[3]),float(row[4]))
+            if flag:
+                print 'Didnt find any parts, bailing'
+                sys.exit(1)
 
-                coords.append(pt)
-                self.polygons[inc]['data'] = LineString(coords)
+            coords.append(pt)
+            self.polygons[inc]['data'] = LineString(coords)
 
         except IOError as e:
             print 'Operation failed: %s' % e.strerror
@@ -620,7 +636,7 @@ class Toolpath:
                 l = LineString((new[0].centroid.coords[0], (0,0)))
                 pt = self.GetIntersectionLocation(new[0], l)
                 distance = new[0].project(pt)
-                new[0] = self.CutLine(new[0], distance)
+                new[0] = self.RotateRing(new[0], distance)
         if len(tour) > 1:
             new = range(len(tour))
             # compare first one to second one
@@ -647,32 +663,45 @@ class Toolpath:
 
         pt = self.GetIntersectionLocation(r1, l)
         distance = r1.project(pt)
-        r1 = self.CutLine(r1, distance)
+        r1 = self.RotateRing(r1, distance)
         
         return r1
 
-    def CutLine(self, line, distance):
-        # Cuts a line after distance traveled along line from its starting point
+    def RotateRing(self, line, distance):
+        # Changes starting point of a ring to point defined by distance
         if distance <= 0.0 or distance >= line.length:
             return [LineString(line)]
+
+        traveled = []
+        traveled_length = 0
+        count = 0
         coords = list(line.coords)
-        count = 2
-        d = LineString(coords[:count]).length
-        while d < distance:
-            d = LineString(coords[:count]).length
-            count += 1
-
-        if d == distance:
-            count += 1
-        else:
-            diff = distance - LineString(coords[:count-2]).length
-            pt = LineString((coords[count-3], 
-                             coords[count-2])).interpolate(diff)
-            coords.insert(count - 3, pt.coords[0])
-
-        coords = coords[:-1]
+        traveled.append(coords[0])
+        test_length = LineString(coords[:2]).length
         
-        return LineString(coords[count-3:] + coords[:count-2])
+        while distance >= test_length:
+            count += 1
+            traveled.append(coords[count])
+            test_length = LineString(coords[:count+2]).length
+            traveled_length = LineString(traveled).length
+
+        diff = distance - traveled_length
+
+        pt = LineString((coords[count], 
+                         coords[count+1])).interpolate(diff)
+
+        if diff == 0:
+            coords = coords[:-1] # remove the last coord
+            coords = coords[1:] # remove the first coord
+            coords = coords[count:] # truncate to the travel point
+            coords.insert(0, pt.coords[0]) # add the new coord
+        else:
+            traveled.append(pt.coords[0]) # add the new coord to traveled.
+            coords.insert(count+1, pt.coords[0]) # add the new coord
+            coords = coords[:-1] # remove the last coord
+            coords = coords[count+1:] # truncate to the travel point
+
+        return LineString(coords + traveled)
 
     # returns the point where line1 crosses line2
     def GetIntersectionLocation(self, l1, l2):
@@ -703,7 +732,6 @@ if __name__ == '__main__':
     # do this to debug and have a look paths and parts
     if tp.debug_pic:
         tp.DrawRawData(tp.debug_file_name)
-        pass
 
     tp.DrawPartsAndCuts("thing2.png", all_lines)
 
