@@ -17,12 +17,6 @@ sudo apt-get update
 system -> administration -> update manager
   update everything
 
-sudo apt-get install emacs23
-
-SKIP TO LABEL
-
-sudo apt-get install python-setuptools
-
 go to http://trac.osgeo.org/geos/
 download geos-3.2.3 source
 install swig, ruby, doxygen, python-sip-dev with synaptic
@@ -32,10 +26,13 @@ install swig, ruby, doxygen, python-sip-dev with synaptic
 run make
 sudo make install
 
+SKIP TO LABEL
+
 get Shapely-1.2.16
-sudo python setup.py
-run python setup.py
-apt-get install python-shapely
+sudo python setup.py install
+sudo python setup.py test
+
+# apt-get install python-shapely
 
 THESE ABOVE INSTALLATIONS PROBABLY DID NOT HELP
 
@@ -50,4 +47,6 @@ then run test_geos.py in laser-code to look at the versions.
 from shapely.geos import lgeos
 lgeos.geos_capi_version
 lgeos._lgeos.GEOSversion()
+
+sudo apt-get install emacs23
 
