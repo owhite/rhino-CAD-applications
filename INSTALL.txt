@@ -1,0 +1,52 @@
+This is not really install documentation as it is a 
+description of what you need to do to star from a clean 
+ubunt 10.04 linuxcnc installation live CD. 
+
+If system is already installed:
+ with cd in machine:
+ kill /boot/grub/grub.cfg
+ restart, go to grub type exit
+
+install from CD - long wait
+
+or if you boot directly to CD dont worry about it. 
+
+Once installed:
+
+sudo apt-get update
+system -> administration -> update manager
+  update everything
+
+sudo apt-get install emacs23
+
+SKIP TO LABEL
+
+sudo apt-get install python-setuptools
+
+go to http://trac.osgeo.org/geos/
+download geos-3.2.3 source
+install swig, ruby, doxygen, python-sip-dev with synaptic
+
+./configure --enable-python --enable-swig
+
+run make
+sudo make install
+
+get Shapely-1.2.16
+sudo python setup.py
+run python setup.py
+apt-get install python-shapely
+
+THESE ABOVE INSTALLATIONS PROBABLY DID NOT HELP
+
+LABEL
+
+sudo apt-get install libgeos-dev
+sudo apt-get install python-pip
+pip install Shapely
+
+from shapely.geos import lgeos
+lgeos.geos_capi_version
+lgeos._lgeos.GEOSversion()
+
+exit
