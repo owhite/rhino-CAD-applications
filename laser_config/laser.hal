@@ -1,0 +1,153 @@
+# loadusr -W pyvcp -c pyvcp laser.xml
+loadusr -W laser_power 95
+
+####################
+# stuff for the mesa board:
+# The 5i20 driver is already loaded
+
+addf hm2_5i20.0.read          servo-thread
+addf hm2_5i20.0.write         servo-thread
+addf hm2_5i20.0.pet_watchdog  servo-thread
+
+# block that reports the status from the laser card
+setp hm2_5i20.0.gpio.058.is_output 0
+setp hm2_5i20.0.gpio.059.is_output 0
+setp hm2_5i20.0.gpio.060.is_output 0
+setp hm2_5i20.0.gpio.061.is_output 0
+setp hm2_5i20.0.gpio.062.is_output 0
+setp hm2_5i20.0.gpio.063.is_output 0
+
+# block that specifies PWM to laser
+setp hm2_5i20.0.gpio.064.is_output 1
+setp hm2_5i20.0.gpio.065.is_output 1
+setp hm2_5i20.0.gpio.066.is_output 1
+setp hm2_5i20.0.gpio.067.is_output 1
+setp hm2_5i20.0.gpio.068.is_output 1
+setp hm2_5i20.0.gpio.069.is_output 1
+setp hm2_5i20.0.gpio.071.is_output 1
+
+setp hm2_5i20.0.gpio.064.invert_output TRUE
+setp hm2_5i20.0.gpio.065.invert_output TRUE
+setp hm2_5i20.0.gpio.066.invert_output TRUE
+setp hm2_5i20.0.gpio.067.invert_output TRUE
+setp hm2_5i20.0.gpio.068.invert_output TRUE
+setp hm2_5i20.0.gpio.069.invert_output TRUE
+setp hm2_5i20.0.gpio.071.invert_output TRUE
+
+setp hm2_5i20.0.gpio.064.out 0
+setp hm2_5i20.0.gpio.065.out 0
+setp hm2_5i20.0.gpio.066.out 0
+setp hm2_5i20.0.gpio.067.out 0
+setp hm2_5i20.0.gpio.068.out 0
+setp hm2_5i20.0.gpio.069.out 0
+setp hm2_5i20.0.gpio.071.out 0
+
+####################
+# parport
+loadrt hal_parport cfg="0xd458"
+addf parport.0.write servo-thread
+
+addf and2.1 servo-thread
+addf and2.2 servo-thread
+
+loadrt or2 count=5
+addf or2.0 servo-thread
+addf or2.1 servo-thread
+addf or2.2 servo-thread
+addf or2.3 servo-thread
+addf or2.4 servo-thread
+
+loadrt oneshot count=1
+addf oneshot.0 servo-thread 
+
+loadrt scale count=2
+addf scale.0 servo-thread
+addf scale.1 servo-thread
+
+# ------------- 
+net e_status halui.estop.is-activated pyvcp.estop_led
+
+# ------------- 
+# Motor power supply
+net moto_ps pyvcp.chbutton1 pyvcp.chb_led1 parport.0.pin-04-out
+
+# ------------- 
+# laser power supply
+net laser_ps pyvcp.chbutton2 pyvcp.chb_led2 parport.0.pin-03-out
+
+# ------------- 
+# chiller
+net chiller_sw pyvcp.chbutton3 pyvcp.chb_led3 parport.0.pin-05-out
+
+# ------------- 
+# create ventilation
+net program_state <= halui.program.is-running => and2.1.in0
+net motion0 <= motion.digital-out-00 => and2.1.in1
+
+net or3_1 and2.1.out or2.3.in0
+net or3_2 pyvcp.chbutton4 or2.3.in1
+
+net vent_sw or2.3.out parport.0.pin-06-out pyvcp.chb_led4
+
+# ---------
+# create gas line
+
+net program_state => and2.2.in0
+net motion1 <= motion.digital-out-01 => and2.2.in1
+
+net or4_1 and2.2.out or2.4.in0
+net or4_2 pyvcp.chbutton5 or2.4.in1
+
+net gasline_sw or2.4.out parport.0.pin-07-out pyvcp.chb_led5
+
+# ------------- 
+# air compressor
+net comp_sw pyvcp.chbutton6 pyvcp.chb_led6 parport.0.pin-08-out 
+
+# ------------- 
+# Sliders to set power and a meter - the slider value is sent into 
+#  the user space component laser_power
+net LASER_POWER laser_power.power-in pyvcp.power-scale-f pyvcp.power-meter
+
+# The pin power-in could also set by an M command as G-code
+#  is executed in axis:
+# sets LASER_POWER 95
+
+# ------------
+# Show IO from laser on LEDs
+net VCPLED0 => pyvcp.data_led-1 hm2_5i20.0.gpio.058.in_not
+net VCPLED1 => pyvcp.data_led-2 hm2_5i20.0.gpio.059.in_not
+net VCPLED2 => pyvcp.data_led-3 hm2_5i20.0.gpio.060.in_not
+net VCPLED3 => pyvcp.data_led-4 hm2_5i20.0.gpio.061.in_not
+net VCPLED4 => pyvcp.data_led-5 hm2_5i20.0.gpio.062.in_not
+net VCPLED5 => pyvcp.data_led-6 hm2_5i20.0.gpio.063.in_not
+
+# ------------
+# The user space componet laser_power takes laser_power.power-in
+#  and deconvolutes that data into PWM settings, e.g., it
+#  sets laser_power.PWM01-out. Display these settings
+#  and also attach them to the m5i20 board to run the laser.
+net PWM01 laser_power.PWM01-out => pyvcp.pwmled-1 hm2_5i20.0.gpio.064.out hm2_5i20.0.led.CR08
+net PWM02 laser_power.PWM02-out => pyvcp.pwmled-2 hm2_5i20.0.gpio.065.out hm2_5i20.0.led.CR07
+net PWM04 laser_power.PWM04-out => pyvcp.pwmled-3 hm2_5i20.0.gpio.066.out hm2_5i20.0.led.CR06
+net PWM08 laser_power.PWM08-out => pyvcp.pwmled-4 hm2_5i20.0.gpio.067.out hm2_5i20.0.led.CR05
+net PWM16 laser_power.PWM16-out => pyvcp.pwmled-5 hm2_5i20.0.gpio.068.out hm2_5i20.0.led.CR04
+net PWM32 laser_power.PWM32-out => pyvcp.pwmled-6 hm2_5i20.0.gpio.069.out hm2_5i20.0.led.CR03
+
+# ------------- 
+# manually switch laser
+setp hm2_5i20.0.gpio.071.invert_output FALSE
+
+net l_input1 pyvcp.laser_state1 or2.0.in0
+net l_input2 pyvcp.laser_chbutton or2.0.in1
+
+net w1 pyvcp.pulse_duration => oneshot.0.width 
+net os1 pyvcp.laser_state2 oneshot.0.in
+
+net or1_0 oneshot.0.out or2.1.in0
+net or1_1 or2.0.out     or2.1.in1
+
+net or2_0 or2.1.out or2.2.in0
+net or2_1 motion.digital-out-02 or2.2.in1
+
+net laser_sw or2.2.out hm2_5i20.0.gpio.071.out hm2_5i20.0.led.CR01
