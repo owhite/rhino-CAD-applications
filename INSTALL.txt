@@ -1,15 +1,15 @@
 This is not really install documentation as it is a 
-description of what you need to do to star from a clean 
-ubunt 10.04 linuxcnc installation live CD. 
+description of what you need to do to start from a clean 
+linuxcnc installation live CD with Ubuntu 10.04 
 
 If system is already installed:
  with cd in machine:
  kill /boot/grub/grub.cfg
  restart, go to grub type exit
 
-install from CD - long wait
+Or if you can boot directly to the CD dont worry about it. 
 
-or if you boot directly to CD dont worry about it. 
+Perform install from CD - long wait.
 
 Once installed:
 
@@ -45,8 +45,9 @@ sudo apt-get install libgeos-dev
 sudo apt-get install python-pip
 pip install Shapely
 
+then run test_geos.py in laser-code to look at the versions. 
+
 from shapely.geos import lgeos
 lgeos.geos_capi_version
 lgeos._lgeos.GEOSversion()
 
-exit
