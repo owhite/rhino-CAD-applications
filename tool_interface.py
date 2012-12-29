@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from Tkinter import *
+import tkFont
 from tkFileDialog import *
 from SimpleDialog import *
 from ConfigParser import *
@@ -193,8 +194,10 @@ class Application(Frame):
 
         row += 1
 
+        self.font = tkFont.Font(family="Helvetica", size=14)
+
         self.results_string = StringVar(value="RESULTS")
-        self.spacer3 = Label(self, textvariable=self.results_string)
+        self.spacer3 = Label(self, textvariable=self.results_string, font=self.font)
         self.spacer3.grid(row=row, column=0, columnspan=5)
         
         row += 1
