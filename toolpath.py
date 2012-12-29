@@ -65,7 +65,7 @@ class Toolpath:
 
         
         font = ImageFont.load_default()
-        font = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Courier_New_Italic.ttf", 40)
+        font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 40)
 
         d=ImageDraw.Draw(img);
         black = (0,0,0)
