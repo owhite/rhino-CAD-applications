@@ -70,7 +70,6 @@ class Gcode:
 
     def write_gcode(self): 
         f = self.output_file
-
         with open(f, 'w') as the_file:
             the_file.write(self.gcode_string)
 
