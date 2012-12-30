@@ -18,19 +18,30 @@ system -> administration -> update manager
   update everything
 
 go to http://trac.osgeo.org/geos/
-download geos-3.2.3 source
+download geos-3.3.5 source
 install swig, ruby, doxygen, python-sip-dev with synaptic
 
 ./configure --enable-python --enable-swig
 
-run make
+make
 sudo make install
 
-SKIP TO LABEL
+sudo apt-get install python-setuptools
 
 get Shapely-1.2.16
+
+Users should make sure libgeos_c is on the system path, and install
+shapely wiht setup.py
+
+export LD_LIBRARY_PATH=/usr/local/lib
+
 sudo python setup.py install
 sudo python setup.py test
+
+sudo apt-get install python-pip
+pip install Shapely
+
+# stopped here
 
 # apt-get install python-shapely
 
@@ -39,8 +50,7 @@ THESE ABOVE INSTALLATIONS PROBABLY DID NOT HELP
 LABEL
 
 sudo apt-get install libgeos-dev
-sudo apt-get install python-pip
-pip install Shapely
+
 
 then run test_geos.py in laser-code to look at the versions. 
 
