@@ -234,7 +234,7 @@ class Application(Frame):
         self.tp.start_temp = float(self.TSPTempSV.get())
         self.tp.alpha = float(self.TSPAlphaSV.get())
         self.tp.iterations = int(self.TSPIterationsSV.get())
-        self.gcode.output_file = pjoin(self.NCFileDirSV.get(), self.cp.get("Gcode", "output_file"))
+        self.gcode.output_file = pjoin(self.NCFileDirSV.get(), self.gcode.output_file)
         self.gcode.move_feed_rate = self.MoverateSV.get()
         self.gcode.cut_feed_rate = self.CutrateSV.get()
 
