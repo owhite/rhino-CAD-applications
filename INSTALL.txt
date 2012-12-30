@@ -41,22 +41,21 @@ sudo python setup.py test
 sudo apt-get install python-pip
 pip install Shapely
 
-# stopped here
+then run test_geos.py in laser-code to look at the versions, which examines:
 
-# apt-get install python-shapely
+> from shapely.geos import lgeos
+> lgeos.geos_capi_version
+> lgeos._lgeos.GEOSversion()
 
-THESE ABOVE INSTALLATIONS PROBABLY DID NOT HELP
+The above test script works if $LD_LIBRARY_PATH is set with export. I have 
+a -feeling- that 
 
-LABEL
+sudu /sbin/ldconfig
 
-sudo apt-get install libgeos-dev
+then it made it possible for it to be permanently available to the system.
 
-
-then run test_geos.py in laser-code to look at the versions. 
-
-from shapely.geos import lgeos
-lgeos.geos_capi_version
-lgeos._lgeos.GEOSversion()
+Also run: 
 
 sudo apt-get install emacs23
+
 
