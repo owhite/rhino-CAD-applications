@@ -281,7 +281,11 @@ class Application(Frame):
 
 
 if __name__ == '__main__':
-    app = Application("./tool_interface.ini")
+    if len(sys.argv) == 1:
+        print 'pass a ini file to command line'
+        sys.exit(1)
+    print sys.argv[1]
+    app = Application(sys.argv[1])
     app.master.title('G-Code Generator')
     app.mainloop()
 

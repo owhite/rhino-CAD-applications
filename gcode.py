@@ -116,7 +116,7 @@ class Gcode:
     def add_footer(self):
         self.cutting_tool_off()
         self.append('M65 P0 (VENTILATION OFF)\n')
-        self.append('G1 X0.000 Y0.000 %s (HOME AGAIN HOME AGAIN)\n' % self.move_speed)
+        self.append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % self.move_speed)
         self.append('M2')
         self.add_EOL()
 
