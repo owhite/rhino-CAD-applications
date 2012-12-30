@@ -52,7 +52,7 @@ a -feeling- that
 
 sudu /sbin/ldconfig
 
-then it made it possible for it to be permanently available to the system.
+then made it possible for it to be permanently available to the system.
 
 Also run: 
 
