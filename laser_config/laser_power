@@ -1,0 +1,55 @@
+#!/usr/bin/python
+
+# a hal component
+#
+# see http://linuxcnc.org/docs/html/hal_halmodule.html
+#
+# takes input between 0 and 99, decomposes it into 6 bits, which is 
+#  useful for setting PWM-based power level to the laser.
+#
+
+import serial
+import hal
+import sys
+import time
+
+input = 0
+
+# can be invoked with an initial power setting
+
+if len(sys.argv) > 1: input = int(sys.argv[1])
+if input < 0: input = 0
+if input > 99: input = 99
+
+c = hal.component("laser_power")
+c.newpin("power-in", hal.HAL_FLOAT, hal.HAL_IN)
+c.newpin("PWM01-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("PWM02-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("PWM04-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("PWM08-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("PWM16-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("PWM32-out", hal.HAL_BIT, hal.HAL_OUT)
+c.newpin("val", hal.HAL_U32, hal.HAL_OUT)
+c.ready()
+
+c['power-in'] = float(input)
+
+# the laser power actually gets scaled by 64% - its in the docs
+
+try:
+    while 1:
+        input = c['power-in']
+        if input < 0: input = 0
+        if input > 99: input = 99
+        val = int(input * 64.0 / 100.0)
+        c['val'] = val
+        for bit in [1, 2, 4, 8, 16, 32]:
+            pwm = val & bit
+            if (pwm == 0): c['PWM%02d-out' % bit] = 0
+            if (pwm != 0): c['PWM%02d-out' % bit] = 1
+
+except (KeyboardInterrupt,):
+    raise SystemExit, 0
+
+
+
