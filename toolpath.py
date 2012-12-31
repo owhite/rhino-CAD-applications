@@ -506,11 +506,12 @@ class Toolpath:
         return order, path, lines
 
     def GetLinesInRegion(self, region, lines):
-        region = Polygon(region.coords) # convert for intersect to work
         list = [] 
-        for j in lines:
-            if region.intersects(j): # shapely has lots of functions for this.
-                list.append(j)       #  intersects() seemed to work best.
+        if len(region.coords) != 2:
+            region = Polygon(region.coords) # convert for intersect to work
+            for j in lines:
+                if region.intersects(j): # shapely has lots of functions for this.
+                    list.append(j)       #  intersects() seemed to work best.
         return list
 
     def CreateGcode(self, tours, lines):
@@ -705,6 +706,8 @@ class Toolpath:
 
     # returns the point where line1 crosses line2
     def GetIntersectionLocation(self, l1, l2):
+        pt = Point()
+
         x = l1.intersection(l2)
         # shapley's intersections can return a lot of things, see docs
         if x.wkt == 'GEOMETRYCOLLECTION EMPTY':
