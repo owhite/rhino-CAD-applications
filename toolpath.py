@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import math
 import os
 import sys
 import getopt
@@ -595,7 +596,7 @@ class Toolpath:
         parts_tour = parts_tour[i:] + parts_tour[:i]
 
         # got the order, now cut parts based on the order
-        parts = self.RotateRingsUsingPath(parts_tour, parts)
+        parts = self.RotateRingsUsingTour(parts_tour, parts)
 
         # reorganize the structure that came in
         count = 0
@@ -625,49 +626,87 @@ class Toolpath:
                 #  so the last one cut is near staring point of part
                 final[i]['cut_tour'].reverse()
                 # got the order, now recut parts
-                final[i]['cuts'] = self.RotateRingsUsingPath(final[i]['cut_tour'], cuts)
+                final[i]['cuts'] = self.RotateRingsUsingTour(final[i]['cut_tour'], cuts)
 
         return final
 
-    def RotateRingsUsingPath(self, tour, rings):
+    def RotateRingsUsingTour(self, tour, rings):
         new = range(len(tour))
         if len(tour) == 1: # a part came down all by it's ownsome
             new[0] = rings[0]
             if rings[0].is_ring:
                 l = LineString((new[0].centroid.coords[0], (0,0)))
-                pt = self.GetIntersectionLocation(new[0], l)
-                distance = new[0].project(pt)
-                new[0] = self.RotateRing(new[0], distance)
+                pt = self.RandMinPtInLine(new[0], (0,0))
+                new[0] = self.RotateRingAtPt(new[0], pt)
         if len(tour) > 1:
             new = range(len(tour))
-            # compare first one to second one
             new[tour[0]] = self.CutRingAtNearestPoint(rings[tour[0]], 
                                                       rings[tour[1]])
-            # for the rest, compare n to n - 1
+
             for i,j in enumerate(tour[1:]):
                 new[tour[i+1]] = self.CutRingAtNearestPoint(rings[tour[i+1]], 
                                                             rings[tour[i]])
+
         return new
-    
+
+    # Approximates a min point between lines, sampling to avoid N^2
+    #  testing showed with this takes .3s with a sample_limit = 1000
+    #  and .04 with 300
+    def RandMinPtInLines(self, l1, l2):
+        sample_limit = 300
+        l1 = list(l1.coords)
+        l2 = list(l2.coords)
+        if len(l1) > sample_limit:
+            l1 = random.sample(l1, sample_limit)
+        if len(l2) > sample_limit:
+            l2 = random.sample(l2, sample_limit)
+        first_time = 1
+        for i, pt1 in enumerate(l1):
+            for j, pt2 in enumerate(l2):
+                if first_time == 1:
+                    min =  math.hypot(pt2[0]-pt1[0], pt2[1]-pt1[1])
+                    i_min = i
+                    j_min = j
+                first_time = 0
+                d = math.hypot(pt2[0]-pt1[0], pt2[1]-pt1[1])
+                if d < min:
+                    i_min = i
+                    j_min = j
+                    min = d
+        return(i_min, j_min)
+
+    # also works by sampling to avoid N^2
+    def RandMinPtInLine(self, l1, pt2):
+        l1 = list(l1.coords)
+        sample_limit = 100000 # testing showed this can be fairly big
+        if len(l1) > sample_limit:
+            l1 = random.sample(l1, sample_limit)
+        first_time = 1
+        for i, pt1 in enumerate(l1):
+            if first_time == 1:
+                min =  math.hypot(pt2[0]-pt1[0], pt2[1]-pt1[1])
+                i_min = i
+            first_time = 0
+            d = math.hypot(pt2[0]-pt1[0], pt2[1]-pt1[1])
+            if d < min:
+                i_min = i
+                min = d
+        return(i_min)
+
     def CutRingAtNearestPoint(self, r1, r2):
-        #  if first object is a ring
-        #    draw a line between two objects. 
-        #    find where line intersects the first object.
-        #    'cut' the ring at that intersection.
-        if r1.is_ring == False: 
-            return r1 # do nothing
-
-        if r2.is_ring:
-            l = LineString((r1.centroid.coords[0], r2.centroid.coords[0]))
-        else:
-            l = LineString((r1.centroid.coords[0], r2.coords[0]))
-
-        pt = self.GetIntersectionLocation(r1, l)
-        distance = r1.project(pt)
-        r1 = self.RotateRing(r1, distance)
-        
+        (pt1, pt2) = self.RandMinPtInLines(r1,r2)
+        if r1.is_ring:
+            r1 = self.RotateRingAtPt(r1, pt1)
         return r1
 
+    def RotateRingAtPt(self, line, i):
+        # Changes starting point of a ring to point in array
+        coords = list(line.coords)
+        if i != 0 and i < len(coords):
+            coords = coords[i:-1] + coords[:i+1]
+        return LineString(coords)
+
+    # no longer used. Replaced by RotateRingAtPt()
     def RotateRing(self, line, distance):
         # Changes starting point of a ring to point defined by distance
         if distance <= 0.0 or distance >= line.length:
