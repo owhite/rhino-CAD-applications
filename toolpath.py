@@ -523,7 +523,6 @@ class Toolpath:
 
     def toolpath(self):
         tours = [] 
-
         # check if user supplied a line connecting the parts
         path = self.LinesByLayer(self.path_layer)
         # get all the parts
@@ -646,7 +645,6 @@ class Toolpath:
             for i,j in enumerate(tour[1:]):
                 new[tour[i+1]] = self.CutRingAtNearestPoint(rings[tour[i+1]], 
                                                             rings[tour[i]])
-
         return new
 
     # Approximates a min point between lines, sampling to avoid N^2
@@ -770,7 +768,7 @@ if __name__ == '__main__':
     tp.LoadRawData()
 
     all_lines = tp.toolpath()
-
+ 
     # do this to debug and have a look paths and parts
     if tp.debug_pic:
         tp.DrawRawData(tp.debug_file_name)
