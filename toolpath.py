@@ -775,8 +775,6 @@ if __name__ == '__main__':
 
     tp.DrawPartsAndCuts("thing2.png", all_lines)
 
-    sys.exit(1)
-
     g = gcode.Gcode(tp)
 
     p = g.MakePhrase()
@@ -784,8 +782,14 @@ if __name__ == '__main__':
     g.append(title)
     g.add_header()
 
+    gcode_cuts = tp.toolpath()
+
     for i in gcode_cuts:
-        g.write_polyline(i)
+        for j in gcode_cuts[i]['cut_tour']:
+            line = gcode_cuts[i]['cuts'][j].coords
+            g.write_polyline(line)
+        line = gcode_cuts[i]['part'].coords
+        g.write_polyline(line)
 
     g.add_footer()
 
