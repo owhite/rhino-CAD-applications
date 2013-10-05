@@ -34,19 +34,6 @@
 '        third field is a counter for number of points
 '        fourth/fifth fields are X and Y
 '
-'Making an exec call to perl. I think it may be possible to also
-' run post processing on the output of this program by doing this....
-'
-' Dim fileExe, fileInput, fileOutput, cmd
-'
-' fileInput = "C:\Rhino\input.txt"
-' fileOutput = "C:\Rhino\output.txt"
-' fileExe = "C:\cygwin\bin\bash -i -c '/usr/bin/ping.pl"
-'
-' cmd = fileExe & " " & fileInput & " " & fileOutput & "'"
-'
-' Dim oShell :	Set oShell = CreateObject ("WScript.Shell")
-' oShell.run cmd
 
 Option Explicit
 
