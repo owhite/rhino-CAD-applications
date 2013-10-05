@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import random
 import math
 import os
 import sys
