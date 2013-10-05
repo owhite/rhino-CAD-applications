@@ -58,4 +58,6 @@ Also run:
 
 sudo apt-get install emacs23
 
+------------------------------------------------------------
 
+dont forget to install the visual basic code into the rhino directory to run that macro
