@@ -1,0 +1,232 @@
+'
+'rhino2nc.rvb - A script to move polylines on a screen to a file. 
+'
+'  this script only operates on objects that are selected
+'
+'Dependencies:
+' must have a file called polyline_dump.ini in an area specified by Rhino.InstallFolder()
+' current Rhino.InstallFolder points to: 
+' C:\Program Files (x86)\Rhino\to write C:\Users\owhite\Documents\Other\CAD\thing.ngc
+' The format of polyline_dump.ini is:
+'
+'  [DUMP_LOCATION]
+'  name="C:\Users\owhite\Documents\Other\CAD\LASER_DUMP\thing.ngc"
+' 
+' Be sure to remove all leading white space in the .ini file
+'
+' This rhinoscript also needs to be installed somewhere. It might be best to
+'  to place it in the same area as polyline_dump.ini
+'
+' The program requires that polylines are stored on layers called "CUTS" and 
+'   "PARTS". Avoid putting parts in the diagram with z != 0. This script finds
+'   all curves on CUTS and PARTS layers, converts any nurb/beziers to polylines
+'   simplifies them. It also attempts to performs a join on all polylines. 
+' It then copies to the tmp layers called CUT_DUMP and PART_DUMP, and exports
+'   raw points to the file specifed in the .ini file. 
+'
+' Some example output is this:
+'  a9c3bdad-c0e8-402d-b9a5-80197aa75ab3 CUTS 0 1.42232857608142 0.779593303841019
+'  a9c3bdad-c0e8-402d-b9a5-80197aa75ab3 CUTS 1 1.42216917135157 0.783295044273631
+'  a9c3bdad-c0e8-402d-b9a5-80197aa75ab3 CUTS 2 1.42169213733888 0.786969378315205
+'
+' where: first field is a UID created by Rhino
+'        second field is the original layer
+'        third field is a counter for number of points
+'        fourth/fifth fields are X and Y
+'
+'Making an exec call to perl. I think it may be possible to also
+' run post processing on the output of this program by doing this....
+'
+' Dim fileExe, fileInput, fileOutput, cmd
+'
+' fileInput = "C:\Rhino\input.txt"
+' fileOutput = "C:\Rhino\output.txt"
+' fileExe = "C:\cygwin\bin\bash -i -c '/usr/bin/ping.pl"
+'
+' cmd = fileExe & " " & fileInput & " " & fileOutput & "'"
+'
+' Dim oShell :	Set oShell = CreateObject ("WScript.Shell")
+' oShell.run cmd
+
+Option Explicit
+
+'Call Rhino2NC
+
+Sub Rhino2NC()
+
+	If Not IsArray(Rhino.SelectedObjects) Then
+		Rhino.Print "There are no selected objects"
+		Exit Sub
+	End If
+
+	Dim iSettingFile : iSettingFile = Rhino.InstallFolder() & "polyline_dump.ini"
+	Dim dumpfile : dumpfile = Rhino.GetSettings(iSettingFile, "DUMP_LOCATION", "name")
+	If IsNull(dumpfile) Then
+		Rhino.Print "polyline_dump.ini is not in." & Rhino.InstallFolder()
+		Exit Sub
+	End If
+
+	Rhino.Print "Reading polyline_dump.ini in: " & Rhino.InstallFolder() & "to write " & dumpfile
+
+	Dim savelayer : savelayer = Rhino.CurrentLayer
+	
+	'Test if we have the right layers
+	If (Rhino.IsLayer("CUTS") = False) Then
+		Rhino.Print "Cuts layer does not exist."
+		Exit Sub
+	End If
+
+	If (Rhino.IsLayer("PARTS") = False) Then 
+		Rhino.Print "Parts layer does not exist."
+		Exit Sub
+	End If
+	
+	Rhino.PurgeLayer("CUTS_DUMP")
+	Rhino.PurgeLayer("PARTS_DUMP")
+	Rhino.PurgeLayer("PARTPATH_DUMP")
+	Rhino.PurgeLayer("CUTSPATH_DUMP")
+	
+	Dim l1 : l1 = Rhino.AddLayer ("CUTS_DUMP",RGB(255, 0, 0))
+	Dim l2 : l2 = Rhino.AddLayer ("PARTS_DUMP",RGB(0, 0, 255))
+	Dim l3 : l3 = Rhino.AddLayer ("PARTPATH_DUMP",RGB(0, 0, 255))
+	Dim l4 : l4 = Rhino.AddLayer ("CUTSPATH_DUMP",RGB(255, 0, 0))
+
+
+	'Now pull down all curves and send them to the new layers
+	ConvertCurves "CUTS", "CUTS_DUMP"
+	ConvertCurves "PARTS","PARTS_DUMP"
+	ConvertCurves "PART_PATH","PARTPATH_DUMP"
+	ConvertCurves "CUTS_PATH","CUTSPATH_DUMP"
+
+	KillFile dumpfile
+
+	'now just have to write all points to a file
+	WriteToFile dumpfile, "CUTS_DUMP", "CUTS"
+	WriteToFile dumpfile, "PARTS_DUMP", "PARTS"
+	WriteToFile dumpfile, "PARTPATH_DUMP", "PART_PATH"
+	WriteToFile dumpfile, "CUTSPATH_DUMP", "CUTS_PATH"
+
+	Rhino.CurrentLayer(savelayer)
+
+	Rhino.PurgeLayer("PARTS_DUMP")
+	Rhino.PurgeLayer("CUTS_DUMP")
+	Rhino.PurgeLayer("PARTPATH_DUMP")
+	Rhino.PurgeLayer("CUTSPATH_DUMP")
+	
+	Rhino.Print "Wrote To: " & dumpfile
+
+
+End Sub
+
+Function KillFile(name)
+	Dim fso, txt
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	fso.CreateTextFile name, True
+	If fso.FileExists(name) Then
+		fso.DeleteFile name
+	End If 
+End Function
+
+Function WriteToFile(name, dumplayer, cuttype)
+	'get all curves
+	Dim fso, txt, i
+
+	Set fso = CreateObject("Scripting.FileSystemObject")
+	Set txt = fso.OpenTextFile(name, 8, True)
+
+	Dim arrObjects : arrObjects = Rhino.ObjectsByLayer(dumplayer)
+
+	'load it into an array
+	If IsArray(arrObjects) Then
+		Dim strObject, arrPoints
+		'bang through all curves
+		For Each strObject In arrObjects
+			If Rhino.IsCurve(strObject) Then
+				arrPoints = Rhino.CurvePoints(strObject)
+				If IsArray(arrPoints) Then
+					For i = 0 To UBound(arrPoints)
+						Dim arrPoint : arrPoint   = arrPoints(i)
+						txt.WriteLine strObject & " " & cuttype & " " & i & " " & CDbl(arrPoint(0)) & " " & CDbl(arrPoint(1))
+					Next
+				End If
+			End If
+		Next  'txt-file will be safed on the local temp direction
+
+	End If
+	txt.Close
+	
+End Function
+
+' this finds all curves on a layer
+'  converts beziers to polylines
+'  simplifies them, copies them to the dumplayer
+'  then it grabs all the lines on the dumplayer
+'  and performs a join on them.
+Function ConvertCurves(layer, dumplayer) 
+	Dim arrObjects, strObject, strPolyline
+
+	'get all curves
+	arrObjects = Rhino.ObjectsByLayer(layer)
+
+	'load it into an array
+	If IsArray(arrObjects) Then
+		'bang through all curves
+		For Each strObject In arrObjects
+			If Rhino.IsObjectSelected (strObject) _
+			And strObject <> vbNull _
+			And Rhino.IsCurve(strObject) Then
+				' Rhino.Print "Object identifier: " & strObject
+				strPolyline = Rhino.ConvertCurveToPolyline(strObject)
+				Rhino.ObjectLayer strPolyline, dumplayer
+				' I think the simplify helps..
+				Rhino.SimplifyCurve (strPolyline) 
+				Rhino.SelectObject strPolyline
+				'Rhino.Print "creating: " & strPolyline
+			End If
+		Next
+	End If
+
+	' this handles joining any new created line that can take it.
+	' Rhino.Print "Joining layers: " & dumplayer
+	arrObjects = Rhino.ObjectsByLayer(dumplayer)
+	Rhino.CurrentLayer(dumplayer)
+	If IsArray(arrObjects) Then
+		Rhino.JoinCurves arrObjects, True
+	End If
+End Function	
+
+Public Function UnusedColorGet (strObject)
+	Dim lngColor : lngColor = Rhino.objectColor(strObject)
+	Dim nRed, nGreen, nBlue
+	nRed = GetRValue(lngColor)
+	nGreen = GetGValue(lngColor)
+	nBlue = GetBValue(lngColor)
+	Dim colorStr
+	colorStr = "(" & nRed & "," & nGreen & "," & nBlue & ")"
+	Rhino.Print "color : " & colorStr
+End Function
+
+Public Function GetRValue (val)
+	If val > -1 And val < 16777216 Then
+		GetRValue = val \ 256 ^ 0 And 255
+	Else
+		GetRValue = -1
+	End If
+End Function 
+
+Public Function GetGValue (val)
+	If val > -1 And val < 16777216 Then
+		GetGValue = val \ 256 ^ 1 And 255
+	Else
+		GetGValue = -1
+	End If
+End Function 
+
+
+Public Function GetBValue (val)
+  If val > -1 And val < 16777216 Then
+	  GetBValue = val \ 256 ^ 2 And 255
+  Else
+	  GetBValue = -1
+  End If
+End Function 
