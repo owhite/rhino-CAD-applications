@@ -1,2 +1,0 @@
-emcsh /home/owhite/emc2-head/tcl/bin/halshow.tcl -- -ini configs/laser_new/laser.ini xb
-

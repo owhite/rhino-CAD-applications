@@ -1,9 +1,0 @@
-sudo mount -t cifs //192.168.1.103/LASER_DUMP /mnt/LASER_DUMP -o credentials=.smbcredentials
-
-where .smdcredentials contains:
-username=som/owhite
-password=blahblah
-
-and do this on .smbcredentials
-sudo chown root .smbcredentials
-chmod 600 .smbcredentials
