@@ -8,7 +8,13 @@ import random
 import System.Windows.Forms.DialogResult
 import ConfigParser
 
-class thing:
+# this tool called by Rhino to make a little interface to configure the 
+#   the ini file that is used by the toolpath.py
+# 
+# the class Meier_UI_Utility.py makes much of the interface
+#   generation possible.
+
+class interface:
     def __init__(self, name):
         self.LoadFile(name)
         # Make a new form (dialog)
@@ -34,17 +40,29 @@ class thing:
         p.addLabel("trackbar1", "%d" % self.power, None, True)
 
         p.addLabel("", "Cut: ", None, False)
-        p.addTrackBar("TB2", 10, 50, 1, 2, 1, self.cut_feed_rate, 150, False, self.trackBar2_OnValueChange)
+        p.addTrackBar("TB2", 1, 40, 1, 2, 1, self.cut_feed_rate, 150, False, self.trackBar2_OnValueChange)
         p.addLabel("trackbar2", "%d" % self.cut_feed_rate, None, True)
 
         p.addLabel("", "Move: ", None, False)
-        p.addTrackBar("TB3", 10, 50, 1, 2, 1, self.move_feed_rate, 150, False, self.trackBar3_OnValueChange)
+        p.addTrackBar("TB3", 1, 30, 1, 2, 1, self.move_feed_rate, 150, False, self.trackBar3_OnValueChange)
         p.addLabel("trackbar3", "%d" % self.move_feed_rate, None, True)
+
+        # name, lowerLimit, upperLimit, increment, 
+        #   decimalPlaces, initValue, width, breakFlowAfter, delegate
+        p.addLabel("", "Dwell time: ", None, False)
+        p.addNumericUpDown("dwell_time", 0, 2, .1, 1, self.dwell_time, 80, True, self.dwell_timeValueChange)
+
 
         p.addCheckBox("check1", "Show paths to cut", self.showpaths, True, self.check1_CheckStateChanged)
         p.addSeparator("sep1", 300, True)
-        p.addButton("button1", self.config_file, buttonWidth, False, self.button1_OnButtonPress)
         p.addButton("", "OK", buttonWidth, False, self.OK_button)
+
+
+    def dwell_timeValueChange(self, sender, e):
+        value = sender.Value.ToString()
+        self.dwell_time = float(value)
+        print self.dwell_time
+
 
     # Called when the box is checked or unchecked
     def check1_CheckStateChanged(self, sender, e):
@@ -64,15 +82,6 @@ class thing:
             c.Text = "Index="+str(index)+", Item="+item
         except:
             pass
-    
-    # Called when the button is pressed
-    def button1_OnButtonPress(self, sender, e):
-        print "original config_file location: ", self.config_file_path
-        filename = rs.OpenFileName("Open", "Text Files (*.ini)|*.ini|All Files (*.*)|*.*||")
-        if filename:
-            (head, tail) = os.path.split(filename)
-            self.LoadFile(filename)
-            sender.Text = tail
     
     # Called when the value is changed
     def num1_OnValueChange(self, sender, e):
@@ -113,9 +122,11 @@ class thing:
     def OK_button(self, sender, e):
         cf = self.config_parser
         cf.set('laser','power', str(self.power))
+        cf.set('gcode','dwell_time', str(self.dwell_time))
         cf.set('gcode','move_feed_rate', str(self.move_feed_rate))
         cf.set('gcode','cut_feed_rate', str(self.cut_feed_rate))
         cf.set('layers', 'showpaths', self.showpaths)
+
 
         with open(self.config_file, 'wb') as configfile:
             cf.write(configfile)
@@ -125,8 +136,9 @@ class thing:
         (head, tail) = os.path.split(file_name)
         if len(head) == 0:
             self.config_file_path = os.getcwd()
-        print self.config_file_path
         self.config_file = tail
+
+        print "loading: %s" % file_name
 
         parser = ConfigParser.RawConfigParser()
         parser.read(file_name)
@@ -142,13 +154,12 @@ class thing:
         self.iterations = parser.getint('tsp', 'iterations')
         self.start_temp = parser.getfloat('tsp', 'start_temp')
         self.alpha = parser.getfloat('tsp', 'alpha')
-
+        
         self.dictionary_file = parser.get('gcode', 'dictionary')
         self.move_feed_rate = parser.getint('gcode', 'move_feed_rate')
         self.cut_feed_rate = parser.getint('gcode', 'cut_feed_rate')
         self.dwell_time = parser.getfloat('gcode', 'dwell_time')
-        self.use_cut_variable = parser.getboolean('gcode', 'use_cut_variable')
-    
+
         from os.path import join as pjoin
         self.output_file = pjoin(parser.get('gcode', 'ncfile_dir'), 
                                  parser.get('gcode', 'output_file'))
@@ -157,6 +168,5 @@ class thing:
 
 
 if __name__ == '__main__':
-
-    t = thing('polyline_dump.ini')
+    t = interface('polyline_dump.ini')
     Rhino.UI.Dialogs.ShowSemiModal(t.form)

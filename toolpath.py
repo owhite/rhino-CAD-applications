@@ -22,7 +22,7 @@ class Toolpath:
         self.cuts_layer = rs.GetSettings(file_name, 'LAYERS', 'cuts_layer')
         self.path_layer = rs.GetSettings(file_name, 'LAYERS', 'parts_path_layer')
         self.cutspath_layer = rs.GetSettings(file_name, 'LAYERS', 'cuts_path_layer')
-        self.showpaths = self.boolean(rs.GetSettings(file_name, 'LAYERS', 'showpaths'))
+        self.showpaths = self._boolean(rs.GetSettings(file_name, 'LAYERS', 'showpaths'))
 
         self.iterations = int(rs.GetSettings(file_name, 'TSP', 'iterations'))
         self.start_temp = float(rs.GetSettings(file_name, 'TSP', 'start_temp'))
@@ -41,7 +41,7 @@ class Toolpath:
             if (not rs.IsLayer(layer)):
                 rs.AddLayer(layer)
                 rs.LayerColor(layer, self.layer_colors[layer])
-
+                
 
     # Gets selected curves and polylines from parts, cuts, paths layers
     #  converts them to simple polylines
@@ -178,7 +178,7 @@ class Toolpath:
         cut_groups['parts'] = part_tour
         for part in part_tour:
             cut_groups[part] = {}
-            # this finds cuts that are fully contained in the ROI
+                         # this finds cuts that are fully contained in the ROI
             cuts_in_part = self.GetLinesInRegion(part, cuts)
 
             p = self.GetLinesInRegion(part, cuts_path)
@@ -205,7 +205,7 @@ class Toolpath:
         list = [] 
         coords = rs.PolylineVertices(region)
         if len(coords) == 2:
-            return
+            return list
 
         for line in lines:
             success = True
@@ -408,7 +408,7 @@ class Toolpath:
             #  center of ring-shaped lines, and the start or end 
             #  points of linear lines
             tsp = TSP(self)
-            tour = tsp.anneal(coords, locked)
+            tour = tsp.Anneal(coords, locked)
 
             # tsp.report_stats()                
 
@@ -538,26 +538,21 @@ class Toolpath:
         return True
 
 
-    def collinear(self, pt1, pt2, pt3):
-        # Return true iff a, b, and c all lie on the same line.
-        return (pt2[0] - pt1[0]) * (pt3[1] - pt1[1]) == (pt3[0] - pt1[0]) * (pt2[1] - pt1[1])
-
-    def within(self, p, q, r):
-        # Return true iff q is between p and r (inclusive)."
-        return p <= q <= r or r <= q <= p
-
-
-    def boolean(self, value):
+    def _boolean(self, value):
         if value == "True":
             return True
         if value == "False":
             return False
 
 
+# see: 
+# http://www.codeproject.com/Articles/26758/Simulated-Annealing-Solving-the-Travelling-Salesma
+# http://www.psychicorigami.com/2007/06/28/tackling-the-travelling-salesman-problem-simmulated-annealing/
+
 class TSP:
 
     def __init__(self,parent):
-        self.reset()
+        self.Reset()
         self.parent = parent
         self.start_temp = parent.start_temp
         self.alpha = parent.alpha
@@ -565,7 +560,7 @@ class TSP:
 
     # Not tested. It's meant to be called when the user
     #   lots of new parameters.
-    def reset(self):
+    def Reset(self):
         self.best=None
         self.best_score=None
         self.start_temp = None
@@ -576,9 +571,9 @@ class TSP:
         self.iterations=None
         self.matrix = None
 
-    def check(self):
+    def Check(self):
         if self.coords is None:
-            print 'tsp cant run without coords, call tsp.set_coords'
+            print 'tsp cant run without coords, call tsp.SetCoords'
 
         if self.start_temp is None:
             print 'tsp cant run without self.start_temp = int'
@@ -592,13 +587,13 @@ class TSP:
         if self.locked_points is None:
             print 'tsp cant run with self.locked_points = None'
 
-    def set_coords(self, coords):
+    def SetCoords(self, coords):
         self.coords = coords
         self.current=range(len(coords)) # the current tour of points
-        self.matrix = self.cartesian_matrix(coords)
+        self.matrix = self.CartesianMatrix(coords)
     
     # Total up the total length of the tour based on the distance matrix
-    def objective_function(self,solution):
+    def ObjectiveFunction(self,solution):
         score=0
         num_cities=len(solution)
         for i in range(num_cities):
@@ -612,19 +607,19 @@ class TSP:
             self.best=solution
         return score
 
-    def kirkpatrick_cooling(self):
+    def KirkpatrickCooling(self):
         T=self.start_temp
         while True:
             yield T
             T=self.alpha*T
 
-    def p_choice(self, prev_score,next_score,temperature):
+    def PChoice(self, prev_score,next_score,temperature):
         if next_score > prev_score:
             return 1.0
         else:
             return math.exp( -abs(next_score-prev_score)/temperature )
 
-    def rand_seq(self,size,positions):
+    def RandSeq(self,size,positions):
         values=range(size)
         inc = 0
         for i in positions:
@@ -641,17 +636,17 @@ class TSP:
             # restore the value if it is in our special list
             yield values[i] 
     
-    def all_pairs(self,size,positions):
-        '''generates all i,j pairs for i,j from 0-size'''
-        for i in self.rand_seq(size, positions):
-            for j in self.rand_seq(size,positions):
+    # generates all i,j pairs for i,j from 0-size
+    def AllPairs(self,size,positions):
+        for i in self.RandSeq(size, positions):
+            for j in self.RandSeq(size,positions):
                 yield (i,j)
     
     # Return all variations where the 
     #  section between two cities are swappedd
-    def reversed_sections(self):
-        positions = self.find_locked_points()
-        for i,j in self.all_pairs(len(self.current), positions):
+    def ReversedSections(self):
+        positions = self.FindLockedPoints()
+        for i,j in self.AllPairs(len(self.current), positions):
             # print 'ij %d %d' % (i, j)
             if i != j and abs(i-j) != 1:
                 copy=self.current[:]
@@ -664,7 +659,7 @@ class TSP:
                     # print 'copy %s' % (copy)
                     yield copy
 
-    def find_locked_points(self):
+    def FindLockedPoints(self):
         # points is a list of positions that are linked to 
         #  each element in the array. For this list:
         #  [pos1, pos2, pos3]
@@ -692,7 +687,7 @@ class TSP:
 
     # create a distance matrix for the city coords 
     #   that uses straight line distance
-    def cartesian_matrix(self, coords):
+    def CartesianMatrix(self, coords):
         matrix={}
         for i,pt1 in enumerate(coords):
             for j,pt2 in enumerate(coords):
@@ -704,14 +699,14 @@ class TSP:
     # read coordinates file return the distance matrix.
     #  coords should be stored as comma separated floats, 
     #  one x,y pair per line.
-    def read_coords(self,coord_file):
+    def ReadCoords(self,coord_file):
         coords=[]
         for line in coord_file:
             x,y=line.strip().split(',')
             coords.append((float(x),float(y)))
         return coords
 
-    def write_tour_to_img(self,coords,tour,locked_points,title,img_file):
+    def WriteTourToImg(self,coords,tour,locked_points,title,img_file):
         # a cheezebag display of the tour, doesnt even scale small routes
         padding=20
         # shift all coords in a bit
@@ -757,7 +752,7 @@ class TSP:
         del d
         img.save(img_file, "PNG")
     
-    def report_stats(self):
+    def ReportStats(self):
         print self.matrix
         print self.coords 
         print self.current
@@ -769,32 +764,32 @@ class TSP:
         print self.iterations
 
     # Where all the fun happens.
-    def anneal(self, coords, locked_points):
-        self.set_coords(coords)
+    def Anneal(self, coords, locked_points):
+        self.SetCoords(coords)
         self.locked_points = locked_points
 
-        current_score=self.objective_function(self.current)
+        current_score=self.ObjectiveFunction(self.current)
         num_evaluations=1
     
-        self.check()
+        self.Check()
 
-        cooling_schedule=self.kirkpatrick_cooling()
+        cooling_schedule=self.KirkpatrickCooling()
         
         for temperature in cooling_schedule:
             done = False
             # examine moves around our current position
-            for next in self.reversed_sections():
+            for next in self.ReversedSections():
                 if num_evaluations >= self.iterations:
                     done=True
                     break
                 
-                next_score=self.objective_function(next)
+                next_score=self.ObjectiveFunction(next)
                 num_evaluations+=1
                 
                 # print (current_score,next_score,temperature)
                 # probablistically accept this solution
                 # always accepting better solutions
-                p=self.p_choice(current_score,next_score,temperature)
+                p=self.PChoice(current_score,next_score,temperature)
                 if random.random() < p:
                     self.current=next
                     current_score=next_score
@@ -802,7 +797,7 @@ class TSP:
             # see if completely finished
             if done: break
         
-        # self.report_stats()
+        # self.ReportStats()
 
         self.iterations = num_evaluations
         # starts with a list of coordinates
@@ -814,32 +809,35 @@ class TSP:
 
 class Gcode:
     def __init__(self, FileName):
+
+        self.ini_file = FileName
         self.gcode_string = ""
 
         self.dictionary_file = rs.GetSettings(FileName, 'GCODE', 'dictionary')
         self.move_feed_rate = int(rs.GetSettings(FileName, 'GCODE', 'move_feed_rate'))
         self.cut_feed_rate = int(rs.GetSettings(FileName, 'GCODE', 'cut_feed_rate'))
         self.dwell_time = float(rs.GetSettings(FileName, 'GCODE', 'dwell_time'))
-        self.use_cut_variable = self.boolean(rs.GetSettings(FileName, 'GCODE', 'use_cut_variable'))
-    
+
         from os.path import join as pjoin
-        self.output_file = pjoin(rs.GetSettings(FileName, 'GCODE', 'ncfile_dir'), 
-                                 rs.GetSettings(FileName, 'GCODE', 'output_file'))
+        path = rs.GetSettings(FileName, 'GCODE', 'ncfile_dir')
+
+        self.output_file = pjoin(path, rs.GetSettings(FileName, 'GCODE', 'output_file'))
     
-        if self.use_cut_variable:
-            self.cut_speed = '#<cutfeedrate>'
-        elif len(self.cut_feed_rate) > 0:
-            self.cut_speed = self.cut_feed_rate
-        else:
-            self.cut_speed = 10
-    
-        if self.use_cut_variable:
-            self.move_speed = '#<movefeedrate>'
-        elif len(self.move_feed_rate) > 0:
-            self.move_speed = self.move_feed_rate
-        else:
-            self.move_speed = 10
-    
+
+        self.cut_speed_variable = '#<cutfeedrate>'
+        self.move_speed_variable = '#<movefeedrate>'
+        self.dwell_time_variable = '#<dwelltime>'
+
+
+        return True
+
+    def TestIfOK(self):
+        path = rs.GetSettings(self.ini_file, 'GCODE', 'ncfile_dir')
+        if not os.path.isdir(path):
+            rs.MessageBox("%s .ini file section GCODE, value for ncfile_dir = %s. %s is not a directory" % (self.ini_file,path, path))
+            return False
+        return True
+
     def MakePhrase(self):
         try:
             ins = open(self.dictionary_file, "r")
@@ -854,10 +852,10 @@ class Gcode:
             line = line.strip()
             (word,type) = line.split('\t')
             if type == "A":
-                adj.append(word)
+                adj.Append(word)
                 adjective_count += 1
             if type == "v":
-                adv.append(word)
+                adv.Append(word)
                 adverb_count += 1
 
         import random
@@ -866,111 +864,109 @@ class Gcode:
                        adj[int(adjective_count * random.random())])
         return s.upper()
 
-    def write_gcode(self): 
+    def WriteGcode(self): 
         f = self.output_file
         try:
-            with open(f, 'w') as the_file:
+            with open(f, 'wb') as the_file:
                 the_file.write(self.gcode_string)
             print 'wrote (%s) in %s' % (p, g.output_file)
         except IOError: 
-            print "%s is not available" % f
+            rs.MessageBox("%s is not available" % f)
 
-    def write_polyline(self, line):
+    def WritePolyline(self, line):
         poly = rs.PolylineVertices(line)
         pt = poly[0]
-        self.move_no_cut(pt[0], pt[1])
+        self.MoveNoCut(pt[0], pt[1])
 
-        self.oxygen_on()
-        self.cutting_tool_on()
-        self.add_EOL()
+        self.OxygenOn()
+        self.CuttingToolOn()
+        self.AddEOL()
         for pt in poly[1:]:
-            self.move(pt[0], pt[1])
+            self.Move(pt[0], pt[1])
 
-        self.cutting_tool_off()
-        self.oxygen_off()
-        self.add_EOL()
+        self.CuttingToolOff()
+        self.OxygenOff()
+        self.AddEOL()
 
-    def move(self, x, y):
-        self.append('G01 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.cut_speed))
+    def Move(self, x, y):
+        self.Append('G01 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.cut_speed_variable))
 
-    def move_no_cut(self, x, y):
-        self.cutting_tool_off()
-        self.append('G00 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.move_speed))
-        self.add_EOL()
+    def MoveNoCut(self, x, y):
+        self.CuttingToolOff()
+        self.Append('G00 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.move_speed_variable))
+        self.AddEOL()
 
-    def add_EOL(self):
-        self.append('\n')
+    def AddEOL(self):
+        self.Append('\n')
 
-    def cutting_tool_off(self):
-        self.append('M65 P2 (LASER OFF)\n')
+    def CuttingToolOff(self):
+        self.Append('M65 P03 (LASER OFF)\n')
 
-    def cutting_tool_on(self):
-        self.append('M64 P2 (LASER ON)\nG4 P%s\n' % (self.dwell_time))
+    def CuttingToolOn(self):
+        self.Append('M64 P03 (LASER ON)\n')
+        if self.dwell_time != 0.0:
+            self.Append('G4 P%s\n' % (self.dwell_time_variable))
 
-    def oxygen_on(self):
-        self.append('M64 P1 (GAS LINE ON)\n')
+    def OxygenOn(self):
+        self.Append('M64 P01 (GAS LINE ON)\n')
 
-    def oxygen_off(self):
-        self.append('M65 P1 (GAS LINE OFF)\n')
+    def OxygenOff(self):
+        self.Append('M65 P01 (GAS LINE OFF)\n')
 
-    def add_footer(self):
-        self.cutting_tool_off()
-        self.append('M65 P0 (VENTILATION OFF)\n')
-        self.append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % self.move_speed)
-        self.append('M2')
-        self.add_EOL()
-
-    def add_header(self):
-        header = ('#<movefeedrate>=%s\n'
-                  '#<cutfeedrate>=%s\n'
-                  'G17 G20 G40 G49 S10\n'
-                  'G80 G90\n'
+    def AddHeader(self):
+        header = ('%s=%s\n'
+                  '%s=%s\n'
+                  '%s=%s\n'
+                  'G17 G20 G40 G49 G80 G90\n'
                   'G92 X0 Y0 (SET CURRENT POSITION TO ZERO)\n'
-                  'G64 P0.005\n'
-                  'M64 P0 (VENTILATION ON)\n'
-                  'M65 P1 (GAS LINE OFF)\n'
-                  'M65 P2 (LASER OFF)\n\n') % (self.move_feed_rate, self.cut_feed_rate)
-        self.append(header)
+                  'G64 P0.005 (Continuous mode with path tolerance)\n\n'
+                  'M64 P00 (VENTILATION ON)\n'
+                  'M65 P01 (GAS LINE OFF)\n'
+                  'M65 P03 (LASER OFF)\n\n') % (self.move_speed_variable, self.move_feed_rate, self.cut_speed_variable, self.cut_feed_rate, self.dwell_time_variable, self.dwell_time)
 
-    def append(self, s):
+        self.Append(header)
+
+    def AddFooter(self):
+        self.CuttingToolOff()
+        self.Append('M65 P00 (VENTILATION OFF)\n')
+        self.Append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % self.move_speed_variable)
+        self.Append('M2 (LinuxCNC program end)')
+        self.AddEOL()
+
+
+    def Append(self, s):
         self.gcode_string = self.gcode_string + s
 
-    def prepend(self, s):
+    def Prepend(self, s):
         self.gcode_string = s + self.gcode_string
-
-    def boolean(self, value):
-        if value == "True":
-            return True
-        if value == "False":
-            return false
-
 
 if __name__ == '__main__':
     g = Gcode("polyline_dump.ini")
-    tp=Toolpath("polyline_dump.ini")
+    if g.TestIfOK():
+        tp=Toolpath("polyline_dump.ini")
 
-    struct = tp.FindToolpath()
+        struct = tp.FindToolpath()
 
-    if struct:
+        if struct:
 
-        if tp.showpaths:
-            tp.ShowPaths(struct)
+            if tp.showpaths:
+                tp.ShowPaths(struct)
 
-        p = g.MakePhrase()
+            p = g.MakePhrase()
 
-        title = '(' + p + ')' + '\n\n'
-        g.append(title)
-        g.add_header()
+            title = '(' + p + ')' + '\n\n'
+            g.Append(title)
+            g.AddHeader()
 
-        parts = struct['parts']
-        for part in parts:
-            cuts = struct[part]['cuts']
-            for cut in cuts:
-                g.write_polyline(cut)
-            g.write_polyline(part)
+            parts = struct['parts']
+            for part in parts:
+                cuts = struct[part]['cuts']
+                for cut in cuts:
+                    g.WritePolyline(cut)
+                g.WritePolyline(part)
 
-        g.add_footer()
+            g.AddFooter()
 
-        g.write_gcode()
+            g.WriteGcode()
 
-        tp.FlushObjects()
+            tp.FlushObjects()
