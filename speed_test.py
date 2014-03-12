@@ -82,7 +82,6 @@ class Gcode:
 
     def WritePolyline(self, poly):
         pt = poly[0]
-        print "%lf :: %lf" % (pt[0], pt[1])
         self.MoveNoCut(pt[0], pt[1])
 
         self.OxygenOn()
