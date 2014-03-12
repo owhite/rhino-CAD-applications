@@ -163,9 +163,6 @@ class Gcode:
 
 if __name__=="__main__":
     g = Gcode("polyline_dump.ini")
-
-    out_files = list()
-
     parts = []
 
     debug_tests_to_execute = 5
