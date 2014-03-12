@@ -37,13 +37,16 @@ class Gcode:
 
         self.power = parser.getint('laser', 'power')
 
-        self.gcode_string = ""
+        self.gcode_string_parts = list()
 
         self.cut_speed_variable = '#<cutfeedrate>'
         self.move_speed_variable = '#<movefeedrate>'
         self.dwell_time_variable = '#<dwelltime>'
 
         # return True
+
+    def gcode_string(self):
+        return "".join(self.gcode_string_parts)
 
     def MakePhrase(self):
         try:
@@ -75,7 +78,7 @@ class Gcode:
         f = self.output_file
         try:
             with open(f, 'wb') as the_file:
-                the_file.write(self.gcode_string)
+                the_file.write(self.gcode_string())
             print 'wrote (%s) in %s' % (p, g.output_file)
         except IOError: 
             print "%s is not available" % f
@@ -87,6 +90,7 @@ class Gcode:
         self.OxygenOn()
         self.CuttingToolOn()
         self.AddEOL()
+
         for pt in poly[1:]:
             self.Move(pt[0], pt[1])
 
@@ -141,10 +145,11 @@ class Gcode:
 
 
     def Append(self, s):
-        self.gcode_string = self.gcode_string + s
+        self.gcode_string_parts.append(s)
 
     def Prepend(self, s):
-        self.gcode_string = s + self.gcode_string
+        ## these are more expensive operations than appending
+        self.gcode_string_parts.insert(0, s)
 
     def LoadCurve(self, file):
         f = open(file, 'rt')
@@ -152,18 +157,23 @@ class Gcode:
         for row in f: 
             q = row.strip().split(' ')
             l.append([float(q[0]), float(q[1]), float(q[2])])
+        f.close()
                                    
         return(l)
 
 if __name__=="__main__":
     g = Gcode("polyline_dump.ini")
 
-    parts = []
-    parts.append(g.LoadCurve("scrap.txt"))
-    parts.append(g.LoadCurve("scrap.txt"))
-    parts.append(g.LoadCurve("scrap.txt"))
-    parts.append(g.LoadCurve("scrap.txt"))
+    out_files = list()
 
+    parts = []
+
+    debug_tests_to_execute = 5
+
+    while debug_tests_to_execute > 0:
+        parts.append(g.LoadCurve("scrap.txt"))
+        debug_tests_to_execute -= 1
+    
     for part in parts:
         t1 = time.time()
         g.WritePolyline(part)
