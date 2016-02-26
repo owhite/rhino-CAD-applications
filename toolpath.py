@@ -2,10 +2,13 @@
 
 import rhinoscriptsyntax as rs
 import Rhino
+import glob
+import string
 import random
 import math
 import os
 import sys
+import time
 import re
 from math import sqrt
 
@@ -36,6 +39,11 @@ class Toolpath:
 
         self.tmp_layer_extension = ".tmp"
 
+        self.backup_dir = rs.GetSettings(file_name, 'BACKUP', 'backup_dir')
+        self.backup_file_ext = "3dm"
+        self.backup_file_count = int(rs.GetSettings(file_name, 'BACKUP', 'backup_file_count'))
+        self.backup_file_count -= 1
+
         for layer in (self.parts_layer, self.cuts_layer, self.path_layer, self.cutspath_layer):
             
             if (not rs.IsLayer(layer)):
@@ -43,11 +51,73 @@ class Toolpath:
                 rs.LayerColor(layer, self.layer_colors[layer])
                 
 
+    # MUCH more testing could happen here
+    def IfBackupFileReady(self):
+        if len(self.backup_dir) == 0:
+            sys.exit("need backup_dir in ini file")
+        if not self.backup_file_count:
+            sys.exit("need backup_file_count in ini file")
+        if len(self.backup_file_ext) == 0:
+            sys.exit("need backup_file_ext in ini file")
+            
+
+    # this tests how many backups there are, 
+    # kills the oldest one > backup_file_count
+    def WhackOldBackupFiles(self):
+        if not os.path.exists(self.backup_dir):
+            os.makedirs(self.backup_dir)
+
+        path = os.path.join(self.backup_dir, "*." + self.backup_file_ext)
+
+        files = filter(os.path.isfile, glob.glob(path))
+        files.sort(key=lambda x: os.path.getmtime(x) , reverse=True)
+
+        count = 1
+        for f in files:
+            if count > self.backup_file_count:
+                os.remove(f) # bye bye
+            count += 1
+
+    def RandName(self):
+        size=6
+        chars=string.ascii_uppercase + string.digits
+        return ''.join(random.choice(chars) for _ in range(size))
+
+    def AddNewBackupFile(self):
+        self.IfBackupFileReady()
+        self.WhackOldBackupFiles()
+        name = self.RandName()
+        path = os.path.join(self.backup_dir, name + "." + self.backup_file_ext)
+
+        objects = rs.SelectedObjects()  
+        count = 0
+        for object_id in objects:
+            layer = rs.ObjectLayer(object_id)
+            if rs.IsCurve(object_id) and layer == self.parts_layer:
+                count+=1
+        if count >= 0:
+            # this will export everything that is selected, including
+            # things that are not cuts or paths
+            commandString = "-_Export " + path + " _Enter _Enter"
+            rs.Command(commandString)
+    
+
+    # Gets selected curves and polylines from parts, cuts, paths layers
+    #  makes sure they're flat. 
+    def EverythingIsFlat(self): 
+        objects = rs.SelectedObjects()  
+        for object_id in objects:
+            if rs.IsCurve(object_id):
+                if not rs.IsCurveInPlane(object_id):
+                    return False
+        return True
+            
+
     # Gets selected curves and polylines from parts, cuts, paths layers
     #  converts them to simple polylines
     def CopyLinesToNewLayers(self): 
         objects = rs.SelectedObjects()  
-        count = 0
+        count = 1
         for object_id in objects:
             layer = rs.ObjectLayer(object_id)
             if rs.IsCurve(object_id) and layer == self.parts_layer:
@@ -152,7 +222,14 @@ class Toolpath:
             rs.PurgeLayer(l)
 
 
-    def FindToolpath(self):
+    def FindToolpath(self, make_backup_file):
+        if not self.EverythingIsFlat():
+            print "found a curve that is not in the active construction plane"
+            return
+
+        if make_backup_file:
+            self.AddNewBackupFile()
+
         if not self.CopyLinesToNewLayers():
             return
 
@@ -176,30 +253,72 @@ class Toolpath:
         cut_path = None
         cut_groups = {}
         cut_groups['parts'] = part_tour
+
+        # GetLinesInRegion() takes long time because it does an all v all pts search
+        #  going to reduce the number of the polylines
+        reduced_list = []
+        r_lookup = {}
+        for c in cuts:
+            r = self.ReduceCurve(c)
+            # print "reduced cut: %d %d" % (len(rs.PolylineVertices(c)), len(rs.PolylineVertices(r)))
+            r_lookup[r] = c
+            reduced_list.append(r)
+
         for part in part_tour:
+            r_part = self.ReduceCurve(part)
+            # print "reduced part: %d %d" % (len(rs.PolylineVertices(part)), len(rs.PolylineVertices(r_part)))
+
             cut_groups[part] = {}
-                         # this finds cuts that are fully contained in the ROI
-            cuts_in_part = self.GetLinesInRegion(part, cuts)
+            # this finds cuts that are fully contained in the ROI
+            results = self.GetLinesInRegion(r_part, reduced_list)
+            cuts_in_part = []
+            for r in results:
+                cuts_in_part.append(r_lookup[r])
 
             p = self.GetLinesInRegion(part, cuts_path)
+
+
             if p:
                 # this assumes length of list p is 1
                 cuts_tour = self.OrderLinesUsingPath(cuts_in_part,p[0])
             else:
                 cuts_tour = self.OrderLines(cuts_in_part)
 
+
+            rs.DeleteObject(r_part)
             cut_groups[part]['cuts'] = cuts_tour
+
+        # whack these
+        rs.DeleteObjects(reduced_list)
 
         # cut_groups = self.OptimizeAllFromTour(cut_groups)
 
         return cut_groups
 
-    def GetRawPoints(self, line):
-        c = []
-        # print rs.ObjectType(line)
-        for pt in rs.PolylineVertices(line):
-            c.append((pt[0],pt[1]))
-        return c
+    def ReduceCurve(self, c):
+        distance = 0.02
+        coords = rs.PolylineVertices(c)
+        length = len(coords)
+
+        # who cares if it's not that long?
+        if length < 20: 
+            return rs.AddPolyline(coords)
+
+        thing = []
+        count = 0
+        travel = 0
+        for i in range(length-1):
+            if i == 0:
+                thing.append(coords[i])
+
+            travel += rs.Distance(coords[i], coords[i+1])
+
+            if travel > distance:
+                thing.append(coords[i+1])
+                travel = 0
+                count += 1
+
+        return rs.AddPolyline(thing)
 
     def GetLinesInRegion(self, region, lines):
         list = [] 
@@ -208,6 +327,7 @@ class Toolpath:
             return list
 
         for line in lines:
+            # print "all v all: %d %d" % (len(rs.PolylineVertices(region)), len(rs.PolylineVertices(line)))
             success = True
             for pt in rs.PolylineVertices(line):
                 if not self.PointInRegion(pt, region):
@@ -217,6 +337,13 @@ class Toolpath:
                 list.append(line)
 
         return list
+
+    def GetRawPoints(self, line):
+        c = []
+        # print rs.ObjectType(line)
+        for pt in rs.PolylineVertices(line):
+            c.append((pt[0],pt[1]))
+        return c
 
     # this bails as soon as it finds a point not in the region
     #  only works in 2d
@@ -282,7 +409,7 @@ class Toolpath:
             order.append(x)
 
         # we have the order, this rearranges the linear lines to improve cutting 
-        order = self.OptimizeLinearPartsFromOrder(order, start)
+        # order = self.OptimizeLinearPartsFromOrder(order, start)
 
         # this returns reversed lines in cases where it makes a better
         # tour. it does not delete the lines that were not in the tour. 
@@ -307,14 +434,16 @@ class Toolpath:
             if rs.IsCurveClosed(line): 
                 pt = rs.CurveAreaCentroid(line)
                 pos = pt[0]
+                print pos
             else: 
                 d1 = rs.Distance(pos, rs.CurveStartPoint(line))
                 d2 = rs.Distance(pos, rs.CurveEndPoint(line))
                 if d2 < d1:
                     rs.ReverseCurve(line)
                 pos = rs.CurveEndPoint(line)
+                print pos
 
-        DeleteObject(pos)
+        rs.DeleteObject(pos)
         return order
 
     def ReorderByNearestPoint(self, lines, start):
@@ -822,20 +951,28 @@ class Gcode:
         path = rs.GetSettings(FileName, 'GCODE', 'ncfile_dir')
 
         self.output_file = pjoin(path, rs.GetSettings(FileName, 'GCODE', 'output_file'))
-    
 
         self.cut_speed_variable = '#<cutfeedrate>'
         self.move_speed_variable = '#<movefeedrate>'
         self.dwell_time_variable = '#<dwelltime>'
 
-
         return True
 
     def TestIfOK(self):
         path = rs.GetSettings(self.ini_file, 'GCODE', 'ncfile_dir')
+        # is there a .ini file?
         if not os.path.isdir(path):
             rs.MessageBox("%s .ini file section GCODE, value for ncfile_dir = %s. %s is not a directory" % (self.ini_file,path, path))
             return False
+        # awesome, do we have destination directory? 
+        f = self.output_file
+        try:
+            with open(f, 'wb') as the_file:
+                the_file.write(self.gcode_string)
+            print 'wrote (%s) in %s' % (path, g.output_file)
+        except IOError: 
+            rs.MessageBox("%s is not available" % f)
+
         return True
 
     def MakePhrase(self):
@@ -852,10 +989,10 @@ class Gcode:
             line = line.strip()
             (word,type) = line.split('\t')
             if type == "A":
-                adj.Append(word)
+                adj.append(word)
                 adjective_count += 1
             if type == "v":
-                adv.Append(word)
+                adv.append(word)
                 adverb_count += 1
 
         import random
@@ -873,9 +1010,20 @@ class Gcode:
         except IOError: 
             rs.MessageBox("%s is not available" % f)
 
-    def WritePolyline(self, line):
+    def DumpPolyline(self, file, line):
+        try:
+            with open(file, 'wb') as the_file:
+                for pt in rs.PolylineVertices(line):
+                    the_file.write("%lf %lf %lf\n" % (pt[0], pt[1], pt[2]))
+            print 'wrote to %s' % file
+        except IOError: 
+            rs.MessageBox("%s is not available" % f)
+
+    def WritePolyline(self, line, comment):
         poly = rs.PolylineVertices(line)
         pt = poly[0]
+        self.AddEOL()
+        self.AddComment(comment)
         self.MoveNoCut(pt[0], pt[1])
 
         self.OxygenOn()
@@ -895,6 +1043,9 @@ class Gcode:
         self.CuttingToolOff()
         self.Append('G00 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.move_speed_variable))
         self.AddEOL()
+
+    def AddComment(self, c):
+        self.Append('(%s)\n' % c)
 
     def AddEOL(self):
         self.Append('\n')
@@ -929,7 +1080,7 @@ class Gcode:
     def AddFooter(self):
         self.CuttingToolOff()
         self.Append('M65 P00 (VENTILATION OFF)\n')
-        self.Append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % self.move_speed_variable)
+        self.Append('G1 X0.000 Y0.000 F30 (HOME AGAIN HOME AGAIN)\n')
         self.Append('M2 (LinuxCNC program end)')
         self.AddEOL()
 
@@ -942,11 +1093,15 @@ class Gcode:
 
 if __name__ == '__main__':
     g = Gcode("polyline_dump.ini")
+ 
+    t2 = time.time()
+
     if g.TestIfOK():
         tp=Toolpath("polyline_dump.ini")
 
-        struct = tp.FindToolpath()
-
+        t1 = time.time()
+        struct = tp.FindToolpath(True)
+        # print " toolpath time: %lf" % (time.time() - t1)
         if struct:
 
             if tp.showpaths:
@@ -954,7 +1109,7 @@ if __name__ == '__main__':
 
             p = g.MakePhrase()
 
-            title = '(' + p + ')' + '\n\n'
+            title = '(' + p + ')' + '\n'
             g.Append(title)
             g.AddHeader()
 
@@ -962,11 +1117,20 @@ if __name__ == '__main__':
             for part in parts:
                 cuts = struct[part]['cuts']
                 for cut in cuts:
-                    g.WritePolyline(cut)
-                g.WritePolyline(part)
+                    g.WritePolyline(cut, "LAYER: CUTS")
+
+                t1 = time.time()
+                g.WritePolyline(part, "LAYER: PARTS")
+                l = len(rs.PolylineVertices(part))
+                # print " part: %d :: %lf" % (l, time.time() - t1)
 
             g.AddFooter()
 
             g.WriteGcode()
 
             tp.FlushObjects()
+
+        # print "close: %lf" % (time.time() - t1)
+        t1 = time.time()
+
+    # print "total: %lf" % (time.time() - t2)

@@ -16,14 +16,8 @@ import ConfigParser
 
 class interface:
     def __init__(self, name):
-        self.LoadFile(name)
-        # Make a new form (dialog)
         self.form = Meier_UI_Utility.UIForm("TSP parameters") 
-        # Accumulate controls for the form
-        self.addControls()
-        # Layout the controls on the form
-        self.form.layoutControls() 
-        # rs.MessageBox("problem finding file")
+
     
 
     # Add each control to an accumulated list of controls

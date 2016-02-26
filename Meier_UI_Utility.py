@@ -374,7 +374,7 @@ class UIPanel(FlowLayoutPanel):
             The control which was added.
         """
         c = NumericUpDown()
-        c.BeginInit()
+        # c.BeginInit()
         c.Name = name
         c.TabIndex = self.tabIndex; self.tabIndex += 1
         if (delegate != None):
@@ -415,7 +415,7 @@ class UIPanel(FlowLayoutPanel):
             The control which was added.
         """
         c = TrackBar()
-        c.BeginInit()
+        # c.BeginInit()
         c.Name = name
         c.TabIndex = self.tabIndex; self.tabIndex += 1
         if (width != None):
