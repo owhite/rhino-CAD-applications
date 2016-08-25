@@ -6,7 +6,7 @@ import glob
 import os
 import re
 
-objectPath = "/Users/owenwhite/Documents/CAD/rivets"
+objectPath = "/Users/owhite/Documents/CAD/rivets"
 
 rs.UnselectAllObjects()
 

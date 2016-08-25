@@ -1,6 +1,10 @@
-#!/usr/bin/env python
+# FEATURES TO ADD:
+# method to specify an end point, rather than going home
+#
 
 import rhinoscriptsyntax as rs
+import ConfigParser as cp
+import StringIO
 import Rhino
 import glob
 import string
@@ -8,44 +12,117 @@ import random
 import math
 import os
 import sys
-import time
 import re
 from math import sqrt
 
-class Toolpath:
-    def __init__(self, file_name):
-        self.ini_file = file_name
+class CommandLineOptions:
+    def __init__(self):
+        self.status = False
+        problem = False
+
+        self.config = cp.ConfigParser()
+
+        if not rs.IsDocumentData():
+            problem = True
+        if len(rs.GetDocumentData(section='gcode', entry = 'material')) == 0:
+            problem = True
+
+        if problem:
+            result = rs.MessageBox ("No CNC information in document, load some?", buttons=1, title="CNC Information Missing")
+            if result != 1:
+                print "not loading .ini information, bailing"
+                return
+            else:
+                self.LoadIniFile()
+        else:
+            for section in rs.GetDocumentData(section=None, entry=None):
+                if not self.config.has_section(section):
+                    self.config.add_section(section)
+                for entry in rs.GetDocumentData(section=section):
+                    self.config.set(section, entry, rs.GetDocumentData(section=section, entry=entry))
+
+        if len(self.config.get('gcode', 'material')) == 0:
+            # we still have a problem
+            print "bad .ini file??"
+            self.status = False
+            return
+
+        path = self.config.get('gcode', 'ncfile_dir')
+        # is there a .ini file?
+        if not os.path.isdir(path):
+            rs.MessageBox("%s .ini file section gcode, value for ncfile_dir = %s. %s is not a directory" % (self.ini_file,path, path))
+            return
+
+        # awesome, do we have destination directory? 
+        f = self.config.get('gcode', 'output_file')
+        try:
+            with open(f, 'wb') as the_file:
+                the_file.write("(nc file loading...)")
+            print 'wrote (%s) in %s' % (path, f)
+        except IOError: 
+            rs.MessageBox("%s is not available" % f)
+            return
+
+        self.status = True
+        return "foo"
+
+
+    def LoadIniFile(self):
+        # finds an ini file
+        filename = rs.OpenFileName("Open", "Config file (*.ini)|*.ini||")
+        if not filename:
+            return 0
+            print "user didnt select ini file"
+        else:
+            # loads it into the config structure
+            self.config.read(filename)
+            # and stuff data into document
+            for s in self.config.sections():
+                for row in self.config.items(s):
+                    (key, entry) = row
+                    rs.SetDocumentData(s, key, entry)
+        return 1
+
+    def GetOptions(self):
+        pass
+        return 
+
+class Toolpath: 
+    def __init__(self, cfg=None):
+        config = cfg
+
         self.verbose = 0
         self.gcode = ""
 
         from os.path import join as pjoin
-        output_file = rs.GetSettings(file_name, 'GCODE', 'output_file')
+        output_file = config.get('gcode', 'output_file')
 
-        self.parts_layer = rs.GetSettings(file_name, 'LAYERS', 'parts_layer')
-        self.cuts_layer = rs.GetSettings(file_name, 'LAYERS', 'cuts_layer')
-        self.path_layer = rs.GetSettings(file_name, 'LAYERS', 'parts_path_layer')
-        self.cutspath_layer = rs.GetSettings(file_name, 'LAYERS', 'cuts_path_layer')
-        self.showpaths = self._boolean(rs.GetSettings(file_name, 'LAYERS', 'showpaths'))
-
-        self.iterations = int(rs.GetSettings(file_name, 'TSP', 'iterations'))
-        self.start_temp = float(rs.GetSettings(file_name, 'TSP', 'start_temp'))
-        self.alpha = float(rs.GetSettings(file_name, 'TSP', 'alpha'))
-
+        self.parts_layer = config.get('layers', 'parts_layer')
+        self.cuts_layer = config.get('layers', 'cuts_layer')
+        self.path_layer = config.get('layers', 'parts_path_layer')
+        self.engrave_layer = config.get('layers', 'engraving_layer')
+        self.cutspath_layer = config.get('layers', 'cuts_path_layer')
+        self.showpaths = self._boolean(config.get('gcode', 'showpaths'))
+        
+        self.iterations = int(config.get('tsp', 'iterations'))
+        self.start_temp = float(config.get('tsp', 'start_temp'))
+        self.alpha = float(config.get('tsp', 'alpha'))
+        
         self.layer_colors = {}
-        self.layer_colors[self.parts_layer] = self.Str2Array(rs.GetSettings(file_name, 'LAYERS', 'parts_color'))
-        self.layer_colors[self.cuts_layer] = self.Str2Array(rs.GetSettings(file_name, 'LAYERS', 'cuts_color'))
-        self.layer_colors[self.path_layer] = self.Str2Array(rs.GetSettings(file_name, 'LAYERS', 'path_color'))
-        self.layer_colors[self.cutspath_layer] = self.Str2Array(rs.GetSettings(file_name, 'LAYERS', 'cutspath_color'))
-
+        self.layer_colors[self.parts_layer] = self.Str2Array(config.get('layers', 'parts_color'))
+        self.layer_colors[self.cuts_layer] = self.Str2Array(config.get('layers', 'cuts_color'))
+        self.layer_colors[self.engrave_layer] = self.Str2Array(config.get('layers', 'engrave_color'))
+        self.layer_colors[self.path_layer] = self.Str2Array(config.get('layers', 'path_color'))
+        self.layer_colors[self.cutspath_layer] = self.Str2Array(config.get('layers', 'cutspath_color'))
+        
         self.tmp_layer_extension = ".tmp"
 
-        self.backup_dir = rs.GetSettings(file_name, 'BACKUP', 'backup_dir')
+        self.backup_dir = config.get('backup', 'backup_dir')
         self.backup_file_ext = "3dm"
-        self.backup_file_count = int(rs.GetSettings(file_name, 'BACKUP', 'backup_file_count'))
+        self.backup_file_count = int(config.get('backup', 'backup_file_count'))
         self.backup_file_count -= 1
 
         for layer in (self.parts_layer, self.cuts_layer, self.path_layer, self.cutspath_layer):
-            
             if (not rs.IsLayer(layer)):
                 rs.AddLayer(layer)
                 rs.LayerColor(layer, self.layer_colors[layer])
@@ -113,70 +190,6 @@ class Toolpath:
         return True
             
 
-    # Gets selected curves and polylines from parts, cuts, paths layers
-    #  converts them to simple polylines
-    def CopyLinesToNewLayers(self): 
-        objects = rs.SelectedObjects()  
-        count = 1
-        for object_id in objects:
-            layer = rs.ObjectLayer(object_id)
-            if rs.IsCurve(object_id) and layer == self.parts_layer:
-                count+=1
-
-        if count == 0:
-            print "no part was selected"
-            return False
-
-        # make new layers
-        part_layers = (self.parts_layer, self.cuts_layer)
-        for layer in (self.parts_layer, self.cuts_layer, self.path_layer, self.cutspath_layer):
-            new_layer = layer + self.tmp_layer_extension
-            if rs.IsLayer(new_layer):
-                rs.PurgeLayer(new_layer)
-            rs.AddLayer(new_layer)
-            rs.LayerColor(new_layer, color = self.layer_colors[layer])
-
-        object_list =[]
-        # collect everything that was selected
-        for object_id in objects:
-            layer = rs.ObjectLayer(object_id)
-            if rs.IsCurve(object_id) and layer in part_layers:
-                object_list.append(object_id)
-
-        # now find if you have any paths
-        # its okay if we didnt find any
-        for object_id in rs.SelectedObjects():
-            if (rs.IsPolyline(object_id) and 
-                (rs.ObjectLayer(object_id) == self.path_layer or 
-                 rs.ObjectLayer(object_id) == self.cutspath_layer)):
-                object_list.append(object_id)
-
-        # got all the objects, now make sure curves are actually polylines
-        # and put them on a new set of layers
-        self.ConvertAndLoadCurves(object_list)
-
-        # I hope this over writing the layer names doesnt 
-        #  catch up to me later. 
-        self.parts_layer = self.parts_layer + self.tmp_layer_extension
-        self.cuts_layer = self.cuts_layer + self.tmp_layer_extension
-        self.path_layer = self.path_layer + self.tmp_layer_extension
-        self.cutspath_layer = self.cutspath_layer + self.tmp_layer_extension
-        return True
-
-    # converts objects that are curves to a polyline
-    #   copies polylines to a new polyline
-    def ConvertAndLoadCurves(self, list):
-        for object_id in list:
-            id = rs.CopyObject(object_id) # make a copy
-            rs.SimplifyCurve(id) # make sure it's simple...
-            # curves can be polylines or not polylines
-            #  for the ones that are not....
-            if rs.IsCurve(id) and not (rs.IsPolyline(id)):
-                id = rs.ConvertCurveToPolyline(id, angle_tolerance=1, 
-                                               tolerance=0.01, delete_input=True)
-            new_layer = rs.ObjectLayer(object_id) + self.tmp_layer_extension 
-            rs.ObjectLayer(id, layer = new_layer) # set the layer of the new object
-
     def Str2Array(self, s):
         return(tuple(int(i) for i in s.split(',')))
 
@@ -190,9 +203,12 @@ class Toolpath:
         draw_layer = "Default"
         if not rs.IsLayer(draw_layer):
             rs.AddLayer(draw_layer)
+        count = 0
         for part in parts:
             pt = rs.CurveStartPoint(part)
             coords.append((pt[0], pt[1], pt[2]))
+            rs.AddTextDot("P%s" % count, pt)
+            count += 1
             if not rs.IsCurveClosed(part):
                 pt = rs.CurveEndPoint(part)
                 coords.append((pt[0], pt[1], pt[2]))
@@ -222,6 +238,11 @@ class Toolpath:
             rs.PurgeLayer(l)
 
 
+    def SetObjectType(self, objs, type):
+        for obj in objs:
+            rs.SetUserText( obj, 'type', type )
+        return objs
+
     def FindToolpath(self, make_backup_file):
         if not self.EverythingIsFlat():
             print "found a curve that is not in the active construction plane"
@@ -235,9 +256,11 @@ class Toolpath:
 
         tours = [] 
         # check if we have the objects we need
-        parts = rs.ObjectsByLayer(self.parts_layer)
-        cuts = rs.ObjectsByLayer(self.cuts_layer)
-        path = rs.ObjectsByLayer(self.path_layer) # optional
+        parts = self.SetObjectType(rs.ObjectsByLayer(self.parts_layer), 'part')
+        c1 = self.SetObjectType(rs.ObjectsByLayer(self.cuts_layer), 'cut')
+        c2 = self.SetObjectType(rs.ObjectsByLayer(self.engrave_layer), 'engrave')
+        cuts = c1 + c2
+        path = rs.ObjectsByLayer(self.path_layer) # optional, dont need to set type
         cuts_path = rs.ObjectsByLayer(self.cutspath_layer) # optional
     
         if len(path) > 1:
@@ -254,19 +277,17 @@ class Toolpath:
         cut_groups = {}
         cut_groups['parts'] = part_tour
 
-        # GetLinesInRegion() takes long time because it does an all v all pts search
-        #  going to reduce the number of the polylines
+        # GetLinesInRegion() takes long time because it does an all v all pts search.
+        #  So reduce the number of the polylines
         reduced_list = []
         r_lookup = {}
         for c in cuts:
             r = self.ReduceCurve(c)
-            # print "reduced cut: %d %d" % (len(rs.PolylineVertices(c)), len(rs.PolylineVertices(r)))
             r_lookup[r] = c
             reduced_list.append(r)
 
         for part in part_tour:
             r_part = self.ReduceCurve(part)
-            # print "reduced part: %d %d" % (len(rs.PolylineVertices(part)), len(rs.PolylineVertices(r_part)))
 
             cut_groups[part] = {}
             # this finds cuts that are fully contained in the ROI
@@ -294,6 +315,74 @@ class Toolpath:
         # cut_groups = self.OptimizeAllFromTour(cut_groups)
 
         return cut_groups
+
+    # Gets selected curves and polylines from parts, cuts, paths layers
+    #  converts them to simple polylines
+    def CopyLinesToNewLayers(self): 
+        objects = rs.SelectedObjects()  
+        count = 1
+        for object_id in objects:
+            layer = rs.ObjectLayer(object_id)
+            if rs.IsCurve(object_id) and layer == self.parts_layer:
+                count+=1
+
+        if count == 0:
+            print "no part was selected"
+            return False
+
+        # make new layers
+        part_layers = (self.parts_layer, self.cuts_layer, self.engrave_layer)
+        all_layers = (self.parts_layer, self.cuts_layer, self.engrave_layer, self.path_layer, self.cutspath_layer)
+        for layer in all_layers:
+            new_layer = layer + self.tmp_layer_extension
+            if rs.IsLayer(new_layer):
+                rs.PurgeLayer(new_layer)
+            rs.AddLayer(new_layer)
+            rs.LayerColor(new_layer, color = self.layer_colors[layer])
+
+        object_list =[]
+        # collect everything that was selected
+        for object_id in objects:
+            layer = rs.ObjectLayer(object_id)
+            if rs.IsCurve(object_id) and layer in part_layers:
+                object_list.append(object_id)
+
+        # now find if you have any paths
+        # its okay if we didnt find any
+        for object_id in rs.SelectedObjects():
+            if (rs.IsPolyline(object_id) and 
+                (rs.ObjectLayer(object_id) == self.path_layer or 
+                 rs.ObjectLayer(object_id) == self.cutspath_layer)):
+                object_list.append(object_id)
+
+        # got all the objects, now make sure curves are actually polylines
+        # and put them on a new set of layers
+        self.ConvertAndLoadCurves(object_list)
+
+        # I hope this over writing the layer names doesnt 
+        #  catch up to me later. 
+        self.parts_layer = self.parts_layer + self.tmp_layer_extension
+        self.cuts_layer = self.cuts_layer + self.tmp_layer_extension
+        self.engrave_layer = self.engrave_layer + self.tmp_layer_extension
+        self.path_layer = self.path_layer + self.tmp_layer_extension
+        self.cutspath_layer = self.cutspath_layer + self.tmp_layer_extension
+
+        return True
+
+    # converts objects that are curves to a polyline
+    #   copies polylines to a new polyline
+    def ConvertAndLoadCurves(self, list):
+        for object_id in list:
+            id = rs.CopyObject(object_id) # make a copy
+            rs.SimplifyCurve(id) # make sure it's simple...
+            # curves can be polylines or not polylines
+            #  for the ones that are not....
+            if rs.IsCurve(id) and not (rs.IsPolyline(id)):
+                id = rs.ConvertCurveToPolyline(id, angle_tolerance=1, 
+                                               tolerance=0.01, delete_input=True)
+            new_layer = rs.ObjectLayer(object_id) + self.tmp_layer_extension 
+            rs.ObjectLayer(id, layer = new_layer) # set the layer of the new object
+
 
     def ReduceCurve(self, c):
         distance = 0.02
@@ -937,49 +1026,31 @@ class TSP:
 
 
 class Gcode:
-    def __init__(self, FileName):
+    def __init__(self, cfg=None):
+        config = cfg
 
-        self.ini_file = FileName
         self.gcode_string = ""
 
-        self.dictionary_file = rs.GetSettings(FileName, 'GCODE', 'dictionary')
-        self.move_feed_rate = int(rs.GetSettings(FileName, 'GCODE', 'move_feed_rate'))
-        self.cut_feed_rate = int(rs.GetSettings(FileName, 'GCODE', 'cut_feed_rate'))
-        self.dwell_time = float(rs.GetSettings(FileName, 'GCODE', 'dwell_time'))
+        self.dictionary_file = config.get('gcode', 'dictionary')
+        self.material = config.get('gcode', 'material')
+        self.move_feed_rate = int(config.get(self.material, 'move_feed_rate'))
+        self.cut_part_flag = False
+        # allows user to group cuts inside a part, but not actually cut the part
+        if config.get('gcode', 'cut_part_flag') == 'True':
+            self.cut_part_flag = True
+        path = config.get('gcode', 'ncfile_dir')
 
         from os.path import join as pjoin
-        path = rs.GetSettings(FileName, 'GCODE', 'ncfile_dir')
+        self.output_file = pjoin(path, config.get('gcode', 'output_file'))
 
-        self.output_file = pjoin(path, rs.GetSettings(FileName, 'GCODE', 'output_file'))
-
-        self.cut_speed_variable = '#<cutfeedrate>'
         self.move_speed_variable = '#<movefeedrate>'
-        self.dwell_time_variable = '#<dwelltime>'
 
-        return True
-
-    def TestIfOK(self):
-        path = rs.GetSettings(self.ini_file, 'GCODE', 'ncfile_dir')
-        # is there a .ini file?
-        if not os.path.isdir(path):
-            rs.MessageBox("%s .ini file section GCODE, value for ncfile_dir = %s. %s is not a directory" % (self.ini_file,path, path))
-            return False
-        # awesome, do we have destination directory? 
-        f = self.output_file
-        try:
-            with open(f, 'wb') as the_file:
-                the_file.write(self.gcode_string)
-            print 'wrote (%s) in %s' % (path, g.output_file)
-        except IOError: 
-            rs.MessageBox("%s is not available" % f)
-
-        return True
 
     def MakePhrase(self):
         try:
             ins = open(self.dictionary_file, "r")
         except IOError:
-            raise Exception,'NoFileError : %s' % (self.dictionary_file)
+            raise Exception,'This NoFileError : %s' % (self.dictionary_file)
     
         adjective_count = 0
         adverb_count = 0
@@ -1019,28 +1090,58 @@ class Gcode:
         except IOError: 
             rs.MessageBox("%s is not available" % f)
 
-    def WritePolyline(self, line, comment):
+    def SetPower(self, part_type):
+        material =  rs.GetDocumentData(section='gcode', entry = 'material')
+        if part_type == 'cut' or part_type == 'part':
+            p = rs.GetDocumentData(section=material, entry = 'cut_power_level')
+        if part_type == 'engrave':
+            p = rs.GetDocumentData(section=material, entry = 'engrave_power_level')
+
+        if len(p) > 0: self.Append('(Setting laser power: %s)\n' % p)
+            
+
+    def GetFeedRate(self, part_type):
+        material =  rs.GetDocumentData(section='gcode', entry = 'material')
+        if part_type == 'cut' or part_type == 'part':
+            rate = rs.GetDocumentData(section=material, entry = 'cut_feed_rate')
+        if part_type == 'engrave':
+            rate = rs.GetDocumentData(section=material, entry = 'engrave_feed_rate')
+
+        return rate 
+            
+    def GetDwellTime(self, part_type):
+        material =  rs.GetDocumentData(section='gcode', entry = 'material')
+        if part_type == 'cut' or part_type == 'part':
+            d = rs.GetDocumentData(section=material, entry = 'cut_dwell_time')
+        if part_type == 'engrave':
+            d = rs.GetDocumentData(section=material, entry = 'engrave_dwell_time')
+
+        return d
+
+    def WritePolyline(self, line):
         poly = rs.PolylineVertices(line)
+        type = rs.GetUserText(line, 'type')
         pt = poly[0]
         self.AddEOL()
-        self.AddComment(comment)
+        self.AddComment("part_type: %s obj_id: %s" % (type, line))
         self.MoveNoCut(pt[0], pt[1])
+        self.SetPower(type)
 
-        self.OxygenOn()
-        self.CuttingToolOn()
+        self.AssistGasOn()
+        self.CuttingToolOn(type)
         self.AddEOL()
+        rate = self.GetFeedRate(rs.GetUserText(line, 'type'))
         for pt in poly[1:]:
-            self.Move(pt[0], pt[1])
+            self.Move(pt[0], pt[1], rate)
 
         self.CuttingToolOff()
-        self.OxygenOff()
+        self.AssistGasOff()
         self.AddEOL()
 
-    def Move(self, x, y):
-        self.Append('G01 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.cut_speed_variable))
+    def Move(self, x, y, speed):
+        self.Append('G01 X%0.4lf Y%0.4lf F%s\n' % (x, y, speed))
 
     def MoveNoCut(self, x, y):
-        self.CuttingToolOff()
         self.Append('G00 X%0.4lf Y%0.4lf F%s\n' % (x, y, self.move_speed_variable))
         self.AddEOL()
 
@@ -1053,34 +1154,32 @@ class Gcode:
     def CuttingToolOff(self):
         self.Append('M65 P03 (LASER OFF)\n')
 
-    def CuttingToolOn(self):
+    def CuttingToolOn(self, type):
         self.Append('M64 P03 (LASER ON)\n')
-        if self.dwell_time != 0.0:
-            self.Append('G4 P%s\n' % (self.dwell_time_variable))
+        self.Append('G4 P%s\n' % self.GetDwellTime(type))
 
-    def OxygenOn(self):
+    def AssistGasOn(self):
         self.Append('M64 P01 (GAS LINE ON)\n')
 
-    def OxygenOff(self):
+    def AssistGasOff(self):
         self.Append('M65 P01 (GAS LINE OFF)\n')
 
     def AddHeader(self):
-        header = ('%s=%s\n'
-                  '%s=%s\n'
-                  '%s=%s\n'
-                  'G17 G20 G40 G49 G80 G90\n'
+        self.Append('%s=%s\n' % (self.move_speed_variable, self.move_feed_rate))
+
+        header = ('G17 G20 G40 G49 G80 G90\n'
                   'G92 X0 Y0 (SET CURRENT POSITION TO ZERO)\n'
                   'G64 P0.005 (Continuous mode with path tolerance)\n\n'
                   'M64 P00 (VENTILATION ON)\n'
-                  'M65 P01 (GAS LINE OFF)\n'
-                  'M65 P03 (LASER OFF)\n\n') % (self.move_speed_variable, self.move_feed_rate, self.cut_speed_variable, self.cut_feed_rate, self.dwell_time_variable, self.dwell_time)
+                  'M65 P01 (GAS LINE OFF)\n' 
+                  'M65 P03 (LASER OFF)\n\n')
 
         self.Append(header)
 
     def AddFooter(self):
         self.CuttingToolOff()
         self.Append('M65 P00 (VENTILATION OFF)\n')
-        self.Append('G1 X0.000 Y0.000 F30 (HOME AGAIN HOME AGAIN)\n')
+        self.Append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % (self.move_speed_variable))
         self.Append('M2 (LinuxCNC program end)')
         self.AddEOL()
 
@@ -1092,45 +1191,26 @@ class Gcode:
         self.gcode_string = s + self.gcode_string
 
 if __name__ == '__main__':
-    g = Gcode("polyline_dump.ini")
- 
-    t2 = time.time()
+    cl = CommandLineOptions()
+    g = Gcode(cfg = cl.config)
+    tp=Toolpath(cfg = cl.config)
 
-    if g.TestIfOK():
-        tp=Toolpath("polyline_dump.ini")
+    struct = tp.FindToolpath(True)
 
-        t1 = time.time()
-        struct = tp.FindToolpath(True)
-        # print " toolpath time: %lf" % (time.time() - t1)
-        if struct:
+    if struct:
+        if tp.showpaths: tp.ShowPaths(struct)
+        p = g.MakePhrase()
 
-            if tp.showpaths:
-                tp.ShowPaths(struct)
+        title = '(' + p + ')' + '\n'
+        g.Append(title)
+        g.AddHeader()
 
-            p = g.MakePhrase()
+        for part in struct['parts']:
+            cuts = struct[part]['cuts']
+            for cut in cuts:
+                g.WritePolyline(cut)
+            if g.cut_part_flag: g.WritePolyline(part)
 
-            title = '(' + p + ')' + '\n'
-            g.Append(title)
-            g.AddHeader()
-
-            parts = struct['parts']
-            for part in parts:
-                cuts = struct[part]['cuts']
-                for cut in cuts:
-                    g.WritePolyline(cut, "LAYER: CUTS")
-
-                t1 = time.time()
-                g.WritePolyline(part, "LAYER: PARTS")
-                l = len(rs.PolylineVertices(part))
-                # print " part: %d :: %lf" % (l, time.time() - t1)
-
-            g.AddFooter()
-
-            g.WriteGcode()
-
-            tp.FlushObjects()
-
-        # print "close: %lf" % (time.time() - t1)
-        t1 = time.time()
-
-    # print "total: %lf" % (time.time() - t2)
+        g.AddFooter()
+        g.WriteGcode()
+        tp.FlushObjects()
