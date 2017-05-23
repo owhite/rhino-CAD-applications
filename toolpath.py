@@ -1,6 +1,8 @@
 # FEATURES TO ADD:
-# method to specify an end point, rather than going home
 #
+# change wood cuts to turn on air pump
+#
+# finish power setting based on engraving/cutting.
 
 import rhinoscriptsyntax as rs
 import ConfigParser as cp
@@ -47,25 +49,39 @@ class CommandLineOptions:
             self.status = False
             return
 
-        path = self.config.get('gcode', 'ncfile_dir')
-        # is there a .ini file?
-        if not os.path.isdir(path):
-            rs.MessageBox("%s .ini file section gcode, value for ncfile_dir = %s. %s is not a directory" % (self.ini_file,path, path))
+        if self.config.get('gcode', 'dont_write_file') == 'True':
+            print "not writing output: dont write flag = True"
             return
 
+        from os.path import join as pjoin
+        path = self.config.get('gcode', 'ncfile_dir')
+        if not os.path.isdir(path):
+            t = "%s not around" % (path)
+            result = rs.MessageBox ("Attempt mount?", buttons=3, title=t)
+            if result:
+                r_dir = "//guest@%s" % self.config.get('gcode', 'remote_dir')
+                os.makedirs(path)
+                os.system("mount_smbfs " + r_dir + " " + path)
+
+        path = self.config.get('gcode', 'ncfile_dir')
+        if not os.path.isdir(path):
+            rs.MessageBox("Cant find ncfile_dir = %s." % (path))
+            return
+
+        print "PATH", path
+
+        self.output_file = pjoin(path, self.config.get('gcode', 'output_file'))
         # awesome, do we have destination directory? 
         f = self.config.get('gcode', 'output_file')
         try:
-            with open(f, 'wb') as the_file:
+            with open(self.output_file, 'wb') as the_file:
                 the_file.write("(nc file loading...)")
-            print 'wrote (%s) in %s' % (path, f)
+            print 'wrote %s' % (self.output_file)
         except IOError: 
-            rs.MessageBox("%s is not available" % f)
+            rs.MessageBox("%s is not available :: 1" % self.output_file)
             return
 
         self.status = True
-        return "foo"
-
 
     def LoadIniFile(self):
         # finds an ini file
@@ -97,6 +113,9 @@ class Toolpath:
         from os.path import join as pjoin
         output_file = config.get('gcode', 'output_file')
 
+        self.end_point = self.SetEndPoint()
+        self.G92_point = self.SetG92Point()
+
         self.parts_layer = config.get('layers', 'parts_layer')
         self.cuts_layer = config.get('layers', 'cuts_layer')
         self.path_layer = config.get('layers', 'parts_path_layer')
@@ -126,7 +145,26 @@ class Toolpath:
             if (not rs.IsLayer(layer)):
                 rs.AddLayer(layer)
                 rs.LayerColor(layer, self.layer_colors[layer])
-                
+
+    def SetEndPoint(self):
+        pt = (0,0,0);
+        objs = rs.ObjectsByType(8192) # get all the text dots
+        if (objs):
+            for obj in objs:
+                item = rs.TextDotText( obj )
+                if (item == "end" or item == "End" or item == "END"):
+                    pt = rs.TextDotPoint(obj)
+        return ( pt )
+
+    def SetG92Point(self):
+        pt = (0,0,0);
+        objs = rs.ObjectsByType(8192) # get all the text dots
+        if (objs):
+            for obj in objs:
+                item = rs.TextDotText( obj )
+                if (item == "G92" or item == "g92"):
+                    pt = rs.TextDotPoint(obj)
+        return ( pt )
 
     # MUCH more testing could happen here
     def IfBackupFileReady(self):
@@ -260,21 +298,13 @@ class Toolpath:
         c1 = self.SetObjectType(rs.ObjectsByLayer(self.cuts_layer), 'cut')
         c2 = self.SetObjectType(rs.ObjectsByLayer(self.engrave_layer), 'engrave')
         cuts = c1 + c2
-        path = rs.ObjectsByLayer(self.path_layer) # optional, dont need to set type
         cuts_path = rs.ObjectsByLayer(self.cutspath_layer) # optional
-    
-        if len(path) > 1:
-            print "there can only be one path to cut parts"
-        elif len(path) == 1:
-            pt = rs.CurveStartPoint(path[0])
-            print "got cuts path"
-            part_tour = self.OrderLinesUsingPath(parts, path[0])
-        else:
-            part_tour = self.OrderLines(parts)
-            part_tour = self.ReorderByNearestPoint(part_tour, (0,0,0))
 
         cut_path = None
         cut_groups = {}
+
+        part_tour = self.EstablishPartsPath(parts)
+
         cut_groups['parts'] = part_tour
 
         # GetLinesInRegion() takes long time because it does an all v all pts search.
@@ -288,7 +318,6 @@ class Toolpath:
 
         for part in part_tour:
             r_part = self.ReduceCurve(part)
-
             cut_groups[part] = {}
             # this finds cuts that are fully contained in the ROI
             results = self.GetLinesInRegion(r_part, reduced_list)
@@ -298,13 +327,11 @@ class Toolpath:
 
             p = self.GetLinesInRegion(part, cuts_path)
 
-
             if p:
                 # this assumes length of list p is 1
                 cuts_tour = self.OrderLinesUsingPath(cuts_in_part,p[0])
             else:
                 cuts_tour = self.OrderLines(cuts_in_part)
-
 
             rs.DeleteObject(r_part)
             cut_groups[part]['cuts'] = cuts_tour
@@ -312,9 +339,80 @@ class Toolpath:
         # whack these
         rs.DeleteObjects(reduced_list)
 
-        # cut_groups = self.OptimizeAllFromTour(cut_groups)
+        cut_groups = self.RotateRingsFromTour(cut_groups)
 
         return cut_groups
+
+    # handles three ways to find the parts path:
+    #  1) using annotated text dots, 2) using a user supplied line, 3) or TSP
+    def EstablishPartsPath(self, parts):
+        path = rs.ObjectsByLayer(self.path_layer)
+    
+        tags = {}
+        for obj in parts:
+            tag = rs.GetUserText( obj, "toolpath_order")
+            if (len(tag) != 0):
+                tags[tag] = obj
+
+        part_tour = []
+        if (len(tags) == len(parts)):
+            for x in sorted(tags.items(), key=lambda tags: tags[0]):
+                part_tour.append(x[1])
+            return( part_tour )
+        elif len(path) > 1:
+            print "there can only be one path to cut parts"
+        elif len(path) == 1:
+            pt = rs.CurveStartPoint(path[0])
+            print "got cuts path"
+            part_tour = self.OrderLinesUsingPath(parts, path[0])
+            return( part_tour )
+        else:
+            part_tour = self.OrderLines(parts)
+            part_tour = self.ReorderByNearestPoint(part_tour, (0,0,0))
+            return( part_tour )
+
+    # Does what it says. 
+    # perform one more optimization armed with knowledge of all the tours:
+    #  cut rings at appropropriate entry point based on path
+    #
+    # the thing getting passed to this function is:
+    # structure['parts'] = list of parts
+    # structure[part]['cuts'] = the object_ids of reflecting order of cuts
+    def RotateRingsFromTour(self, struct):
+        parts = []
+        count = 0
+        point = (0,0,0)
+        points = []
+        for part in struct['parts']:
+            if rs.IsCurveClosed(part):
+                r = rs.PointClosestObject(point, [part])
+                parts.append(self.RotateRingAtPt(part, r[1]))
+                point = r[1]
+            else:
+                parts.append(part)
+                point = rs.CurveEndPoint(part)
+            points.append(point)
+
+        new_struct = {}
+        new_struct['parts'] = parts
+
+        for i, part in enumerate(struct['parts']):
+            new_cuts = []
+            point = points[i]
+            for cut in struct[part]['cuts']:
+                if rs.IsCurveClosed(cut):
+                    r = rs.PointClosestObject(point, [cut])
+                    new_cuts.append(self.RotateRingAtPt(cut, r[1]))
+                    point = r[1]
+                else:
+                    new_cuts.append(cut)
+                    point = rs.CurveEndPoint(cut)
+
+            new_struct[parts[i]] = {}
+            new_struct[parts[i]]['cuts'] = new_cuts
+        
+        return new_struct
+
 
     # Gets selected curves and polylines from parts, cuts, paths layers
     #  converts them to simple polylines
@@ -350,7 +448,7 @@ class Toolpath:
         # now find if you have any paths
         # its okay if we didnt find any
         for object_id in rs.SelectedObjects():
-            if (rs.IsPolyline(object_id) and 
+            if ((rs.ObjectType(object_id) == 4) and
                 (rs.ObjectLayer(object_id) == self.path_layer or 
                  rs.ObjectLayer(object_id) == self.cutspath_layer)):
                 object_list.append(object_id)
@@ -497,42 +595,8 @@ class Toolpath:
         for x in sorted(results, key=results.get):
             order.append(x)
 
-        # we have the order, this rearranges the linear lines to improve cutting 
-        # order = self.OptimizeLinearPartsFromOrder(order, start)
-
         # this returns reversed lines in cases where it makes a better
         # tour. it does not delete the lines that were not in the tour. 
-        return order
-
-    # this works okay-ish. Did see some examples of picking
-    #  the nearest start point, at the expense of the distance
-    #  to the next part because the implementation doesnt look ahead.
-    # This function is not needed if the path was defined using TSP,
-    #  only when the user defined an order be explicitly supplying
-    #  a cuts_path or part_path. 
-    def OptimizeLinearPartsFromOrder(self, order, pt):
-        # think I'm retiring this part
-        # first = self.ReorderByNearestPoint(lines, order, pos)
-        # i = order.index(first)
-        # order = order[i:] + order[:i]
-
-        pos = rs.AddPoint(pt)
-
-        path = []
-        for line in order:
-            if rs.IsCurveClosed(line): 
-                pt = rs.CurveAreaCentroid(line)
-                pos = pt[0]
-                print pos
-            else: 
-                d1 = rs.Distance(pos, rs.CurveStartPoint(line))
-                d2 = rs.Distance(pos, rs.CurveEndPoint(line))
-                if d2 < d1:
-                    rs.ReverseCurve(line)
-                pos = rs.CurveEndPoint(line)
-                print pos
-
-        rs.DeleteObject(pos)
         return order
 
     def ReorderByNearestPoint(self, lines, start):
@@ -644,75 +708,14 @@ class Toolpath:
 
         return order
 
-    # perform one more optimization armed with knowledge of all the tours:
-    #  change the order based on the path, and it cuts rings at the 
-    #  appropriate entry point.
-    #
-    # the thing getting passed to this function is:
-    # structure['parts'] = list of parts
-    # structure[part]['cuts'] = the object_ids of reflecting order of cuts
-    def OptimizeAllFromTour(self, struct):
-        # find the best part to start with, then reorder the parts
-        #  based on that information
-
-        # got the order, now cut parts based on the order
-        new_parts, replace = self.RotateRingsUsingTour(parts)
-
-        struct['parts'] = new_parts
-        # new parts were made, so they get loaded back into the structure
-        for part in parts:
-            struct[replace[part]] = struct.pop(part)
-
-        # now clean up all the cuts in each part.
-        # use the part start coords for rotation to re-order the cuts
-        for part in new_parts:
-            start = rs.CurveStartPoint(part)
-            cuts = struct[part]['cuts']
-            if len(cuts) != 0:
-                c = self.ReorderByNearestPoint(cuts, rs.CurveStartPoint(part))
-                # and since the cuts get done first, reverse them
-                #  so the last one cut is near staring point of part
-                c.reverse()
-                # got the order, now recut parts
-                cuts, replace = self.RotateRingsUsingTour(c)
-                struct[part]['cuts'] = cuts
-
-        return struct
-
-
-    # Does what it says. 
-    #  also returns improved parts, and a dictionary to 
-    #  figure out what happened to the old parts
-    def RotateRingsUsingTour(self, tour):
-        new = []
-        if len(tour) == 1: # a part came down all by it's ownsome
-            line = tour[0]
-            if rs.IsCurveClosed(line):
-                results = rs.PointClosestObject((0,0,0), [line])
-                line = self.RotateRingAtPt(line, results[1])
-            new.append(line)
-
-        if len(tour) > 1:
-            old_id = self.CutRingAtNearestPoint(tour[0], tour[1])
-            new.append(old_id)
-            for i,j in enumerate(tour[1:]):
-                id = self.CutRingAtNearestPoint(tour[i+1],old_id)
-                new.append(id)
-                old_id = id
-
-        replace = {}
-        count = 0
-        for x in new:
-            replace[tour[count]] = x
-            count += 1
-        return new, replace
-
     def CutRingAtNearestPoint(self, r1, r2):
         if rs.IsCurveClosed(r1):
             results = rs.CurveClosestObject(r1,[r2])
             r1 = self.RotateRingAtPt(r1, results[2])
         return r1
 
+    # user sent this a closed line, and a point on that line - 
+    #  "cut" the ring so it starts at the point
     def RotateRingAtPt(self, line, point):
         objs = [line]
         results = rs.PointClosestObject(point, objs)
@@ -720,24 +723,32 @@ class Toolpath:
             pt3 = results[1]
             # find which segment of the polyline has the point
             coords = rs.PolylineVertices(line)
-            add_new = True
-            for i,j in enumerate(coords[1:]):
-                if self.IsBetween(coords[i], coords[i+1], pt3):
+            i = 0
+            for pt in coords:
+                if self.IsBetween(coords[i], coords[i+1], pt3): # its on the line segment
+                    # the distance on the line far from either point
                     if (rs.Distance(coords[i], pt3) > 0.0001 and
                         rs.Distance(coords[i+1], pt3) > 0.0001):
                         i+=1
                         coords.insert(i, pt3)
-                    break 
-            # now reorganize the ring 
-            coords = coords[i:-1] + coords[:i+1]
+                        break 
+                    else: # distance is close to one of the points
+                        if (rs.Distance(coords[i], pt3) <= 0.0001):
+                            break 
+                        if (rs.Distance(coords[i+1], pt3) <= 0.0001):
+                            i+=1
+                            break 
+                i+=1
+            if (i != 0): # it's probably okay if i == 0
+                coords = coords[i:-1] + coords[:i+1]
         else:
             print "odd, RotateRingAtPt did not find a object close to pt"
 
         new = rs.AddPolyline(coords)
         rs.ObjectLayer(new, rs.ObjectLayer(line))
+        rs.SetUserText(new, 'type', rs.GetUserText(line, 'type'))
         rs.DeleteObject(line) # bye bye
         return new
-
 
     def IsBetween(self, pt1, pt2, pt3):
         # from http://stackoverflow.com/questions/328107/how-can-you-determine-a-point-is-between-two-other-points-on-a-line-segment
@@ -1035,9 +1046,12 @@ class Gcode:
         self.material = config.get('gcode', 'material')
         self.move_feed_rate = int(config.get(self.material, 'move_feed_rate'))
         self.cut_part_flag = False
+        self.dont_write_file = False
         # allows user to group cuts inside a part, but not actually cut the part
         if config.get('gcode', 'cut_part_flag') == 'True':
             self.cut_part_flag = True
+        if config.get('gcode', 'dont_write_file') == 'True':
+            self.dont_write_file = True
         path = config.get('gcode', 'ncfile_dir')
 
         from os.path import join as pjoin
@@ -1073,13 +1087,14 @@ class Gcode:
         return s.upper()
 
     def WriteGcode(self): 
-        f = self.output_file
-        try:
-            with open(f, 'wb') as the_file:
-                the_file.write(self.gcode_string)
-            print 'wrote (%s) in %s' % (p, g.output_file)
-        except IOError: 
-            rs.MessageBox("%s is not available" % f)
+        if not self.dont_write_file:
+            f = self.output_file
+            try:
+                with open(f, 'wb') as the_file:
+                    the_file.write(self.gcode_string)
+                print 'wrote (%s) in %s' % (p, g.output_file)
+            except IOError: 
+                rs.MessageBox("%s is not available :: 2" % f)
 
     def DumpPolyline(self, file, line):
         try:
@@ -1088,7 +1103,7 @@ class Gcode:
                     the_file.write("%lf %lf %lf\n" % (pt[0], pt[1], pt[2]))
             print 'wrote to %s' % file
         except IOError: 
-            rs.MessageBox("%s is not available" % f)
+            rs.MessageBox("%s is not available :: 3" % f)
 
     def SetPower(self, part_type):
         material =  rs.GetDocumentData(section='gcode', entry = 'material')
@@ -1167,19 +1182,25 @@ class Gcode:
     def AddHeader(self):
         self.Append('%s=%s\n' % (self.move_speed_variable, self.move_feed_rate))
 
+        # this is where you'd change settings for air pump
+        # print "got: " , self.material
         header = ('G17 G20 G40 G49 G80 G90\n'
-                  'G92 X0 Y0 (SET CURRENT POSITION TO ZERO)\n'
+                  'G92 X%f Y%f (SET CURRENT POSITION)\n'
                   'G64 P0.005 (Continuous mode with path tolerance)\n\n'
                   'M64 P00 (VENTILATION ON)\n'
                   'M65 P01 (GAS LINE OFF)\n' 
-                  'M65 P03 (LASER OFF)\n\n')
+                  'M65 P03 (LASER OFF)\n\n') % (self.G92_point[0], self.G92_point[1])
 
         self.Append(header)
 
     def AddFooter(self):
+        pt = self.end_point
         self.CuttingToolOff()
         self.Append('M65 P00 (VENTILATION OFF)\n')
-        self.Append('G1 X0.000 Y0.000 F%s (HOME AGAIN HOME AGAIN)\n' % (self.move_speed_variable))
+        self.Append('(HOME AGAIN HOME AGAIN)\n')
+        self.Append('G0 X%f Y%f F%s\n' % (pt[0],
+                                          pt[1],
+                                          (self.move_speed_variable)))
         self.Append('M2 (LinuxCNC program end)')
         self.AddEOL()
 
@@ -1194,6 +1215,8 @@ if __name__ == '__main__':
     cl = CommandLineOptions()
     g = Gcode(cfg = cl.config)
     tp=Toolpath(cfg = cl.config)
+    g.end_point = tp.end_point
+    g.G92_point = tp.G92_point
 
     struct = tp.FindToolpath(True)
 

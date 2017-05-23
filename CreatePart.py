@@ -9,6 +9,8 @@
 import rhinoscriptsyntax as rs
 from System.Drawing import Color
 import sys
+import time
+import Rhino.RhinoApp as app
 
 def FindLargestCurve(objects):
     max_area = 0.0
@@ -112,6 +114,13 @@ if objects:
         for obj in others:
             rs.ObjectLayer(obj, "CUTS")
 
+        others.append(max_obj)
+        rs.FlashObject(others, style=True)
+        rs.UnselectObjects(others)
+        app.Wait()
+        time.sleep(1)
+        rs.SelectObjects(others)
+        
         success = True
 
 if success:
@@ -119,4 +128,3 @@ if success:
 else:
     print "no part created"
 
-rs.UnselectAllObjects()

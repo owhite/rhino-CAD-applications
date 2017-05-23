@@ -11,7 +11,6 @@ from Eto.Drawing import *
 
 class Layout:
     def __init__(self):
-        problem = False
 
         # config is the data structure that stores information for the most part
         # the program will load stuff from the document into config
@@ -22,6 +21,9 @@ class Layout:
 
         # These are some of the parameters that get loaded into the form
         self.param_items = ('cut_dwell_time', 'cut_feed_rate', 'cut_power_level', 'engrave_feed_rate', 'engrave_power_level', 'engrave_dwell_time')
+
+    def ConfigIsOk(self):
+        problem = False
 
         # If the document doesnt have configuration data, throw some complaints
         if not rs.IsDocumentData():
@@ -45,7 +47,7 @@ class Layout:
             result = rs.MessageBox ("No CNC information in document, load some?", buttons=1, title="CNC Information Missing")
             if result != 1:
                 print "not loading .ini information, bailing"
-                return
+                return False
             else:
                 # get data from disk
                 self.LoadIniFile()
@@ -54,9 +56,9 @@ class Layout:
         if self.ConfigParamsAreBroke():
             # we still have a problem
             print "User supplied bad .ini file or document data has an issue"
-            self.status = False
+            return False
 
-        return
+        return True
 
     def ConfigParamsAreBroke(self):
         type = self.config.get('gcode', 'material')
@@ -65,12 +67,18 @@ class Layout:
         else:
             # test if the config is happy
             for item in self.param_items:
-                if len(self.config.get(type, item)) == 0:
+                if not self.config.has_option(type, item):
                     return True
 
-        if len(self.config.get('gcode', 'output_file')) == 0: return True
-        if len(self.config.get('gcode', 'cut_part_flag')) == 0: return True
-        if len(self.config.get('gcode', 'showpaths')) == 0: return True
+        if not self.config.has_option('gcode', 'output_file'):
+            return True
+        if not self.config.has_option('gcode', 'cut_part_flag'):
+             return True
+        if not self.config.has_option('gcode', 'showpaths'):
+            return True
+        if not self.config.has_option('gcode', 'dont_write_file'):
+            return True
+            
 
         return False
 
@@ -91,6 +99,10 @@ class Layout:
                     rs.SetDocumentData(s, key, entry)
 
     def MakeForm(self):
+        if not self.ConfigIsOk():
+            self.result = False
+            return
+
         self.dlg = Dialog[bool](Title = "Edit parameters", Padding = 10)
         label = Label(Text = "Enter a value:")
 
@@ -109,7 +121,7 @@ class Layout:
         self.dd.Items.Add('steel')
         self.dd.Items.Add('wood')
 
-        # this is amazing how you supply a callback to Eto.form objects
+        # Amazing how Eto.forms supplies a callback to objects
         self.dd.SelectedIndexChanged  += self.dd_list_clicked
 
         # Section where all material parameters are loaded
@@ -117,8 +129,7 @@ class Layout:
         layout.Rows.Add(Row)
 
         self.data_label = Label(Text = "Data:")
-        Row = (TableRow(self.data_label))
-        layout.Rows.Add(Row)
+        layout.Rows.Add((TableRow(self.data_label)))
 
         self.paramTBs = {}
         self.paramLabels = {}
@@ -127,13 +138,12 @@ class Layout:
             self.paramTBs[item] = tb
             label = Label()
             self.paramLabels[item] = label
-            Row = (TableRow(label, tb))
-            layout.Rows.Add(Row)
+            layout.Rows.Add((TableRow(label, tb)))
 
         # Cut Part Checkbox
         self.cutpartsCB = CheckBox( Text = "Select = yes" )
         self.cutpartsCB.Checked = False
-        Row = (TableRow(Label (Text = "Cut part:" ), self.cutpartsCB))
+        Row = (TableRow(Label (Text = "Cut part:"), self.cutpartsCB))
         layout.Rows.Add(Row)
 
         # Showpaths Checkbox
@@ -142,22 +152,41 @@ class Layout:
         Row = (TableRow(Label (Text = "Show paths:" ), self.showpathsCB))
         layout.Rows.Add(Row)
 
+        # Dont write file...
+        self.dontWriteFileCB = CheckBox( Text = "Select = yes" )
+        self.dontWriteFileCB.Checked = False
+        Row = (TableRow(Label (Text = "No output file:" ), self.dontWriteFileCB))
+        layout.Rows.Add(Row)
         Row = (TableRow(Label(Text = "                                      "))) # blank line
         layout.Rows.Add(Row)
+
+        # blank line...
+        Row = (TableRow(Label(Text = "                                      ")))
 
         # Apply, reload and cancel buttons
-        Row = (TableRow(Label(Text = "                                      "))) # blank line
         layout.Rows.Add(Row)
         apply = Button(Text = "Apply")
-        apply.Click += self.apply_click
-        cancel = Button(Text = "Cancel")
-        cancel.Click += self.cancel_click
+        apply.Click += self.apply_click # attach callback
+
         reload = Button(Text = "Reload")
         reload.Click += self.reload_click
-        Row = (TableRow(apply, reload, cancel))
+
+        Row = (TableRow(apply, reload))
         layout.Rows.Add(Row)
 
+        # Raw edit and cancel buttons
+        raw_edit = Button(Text = "Raw edit")
+        raw_edit.Click += self.raw_edit_click
+
+        cancel = Button(Text = "Cancel")
+        cancel.Click += self.cancel_click
+
+        Row = (TableRow(raw_edit, cancel))
+        layout.Rows.Add(Row)
+
+        # Load all the rows with current config data
         self.UpdateForm()
+
         # Dialogue box stuff
         content = StackLayout(Spacing = 5)
         content.Items.Add(layout)
@@ -168,7 +197,7 @@ class Layout:
         self.result = self.dlg.ShowModal(RhinoEtoApp.MainWindow)
 
 
-    # handles loading all the config variables into form elements
+    # Handles loading all the config variables into form elements
     def UpdateForm(self):
         # Output file section
         self.outputFile.Text = self.config.get('gcode', 'output_file')
@@ -190,6 +219,7 @@ class Layout:
             label.Text = "  " + x + ":"
 
         # Cut Part Checkbox
+        # allows user to group cuts inside a part, but not actually cut the part
         self.cutpartsCB.Checked = False
         if self.config.get('gcode', 'cut_part_flag') == "True":
             self.cutpartsCB.Checked = True
@@ -199,8 +229,75 @@ class Layout:
         if self.config.get('gcode', 'showpaths') == "True":
             self.showpathsCB.Checked = True
 
-    # User adjusted the drop down list 
-    #  a callback
+        # Dont Write File Checkbox
+        self.dontWriteFileCB.Checked = False
+        if self.config.get('gcode', 'dont_write_file') == "True":
+            self.dontWriteFileCB.Checked = True
+
+    # Write all the changes into the self.config
+    def CaptureFormContents(self):
+        self.config.set('gcode', 'output_file', self.outputFile.Text)
+
+        self.config.set('gcode', 'showpaths', "False")
+        if self.showpathsCB.Checked:
+            self.config.set('gcode', 'showpaths', "True")
+
+        self.config.set('gcode', 'dont_write_file', "False")
+        if self.dontWriteFileCB.Checked:
+            self.config.set('gcode', 'dont_write_file', "True")
+
+        self.config.set('gcode', 'cut_part_flag', "False")
+        if self.cutpartsCB.Checked:
+            self.config.set('gcode', 'cut_part_flag', "True")
+
+        type = str(self.dd.SelectedValue)
+
+        self.config.set('gcode', 'material', type)
+
+        for item in self.param_items:
+            tb = self.paramTBs[item]
+            self.config.set(type, item, tb.Text)
+
+    # Provide user with a way of editing all the document data, independent of
+    #  of the form that has been rendered. 
+    def RawEditDocumentData(self):
+        rows = []
+        sections = []
+        keys = []
+
+        for section in self.config.sections():
+            for entry in self.config.items(section):
+                str = "[%s] %s = %s" % (section, entry[0], entry[1])
+                rows.append(str)
+                sections.append(section)
+                keys.append(entry[0])
+
+        # Just punted and used rhinoscript to make this window
+        choice = rs.ListBox(rows, "select")
+
+        if not choice:
+            print "no choice selected"
+        else:
+            count = 0 # got to figure out what was selected and then change self.config
+            for row in rows:
+                if choice == rows[count]:
+                    break
+                count += 1
+
+            text = rs.EditBox(message="Edit %s" % rows[count])
+            if text: # got it .... change config
+                self.config.set(sections[count], keys[count], text)
+
+    # Everything is loaded into self.config, write that into the document
+    #   separate function because it might get called by other functions
+    #   at some point
+    def WriteDocumentData(self):
+        for s in self.config.sections():
+            for row in self.config.items(s):
+                (key, entry) = row
+                rs.SetDocumentData(s, key, entry)
+
+    # Callback - user adjusted the drop down list 
     def dd_list_clicked(self, sender, e):
         type = str(self.dd.SelectedValue)
 
@@ -224,6 +321,11 @@ class Layout:
             else:
                 self.UpdateForm()
 
+    # Callback - user poked at raw_edit button
+    def raw_edit_click(self, sender, e):
+        self.RawEditDocumentData()
+        self.UpdateForm()
+
     # Callback - user poked at apply button
     def apply_click(self, sender, e):
         self.dlg.Close(True) # true is return value
@@ -231,36 +333,6 @@ class Layout:
     # Callback - user poked the cancel button
     def cancel_click(self, sender, e):
         self.dlg.Close(False)
-
-    # Write all the changes into the self.config
-    def CaptureFormContents(self):
-        self.config.set('gcode', 'output_file', self.outputFile.Text)
-
-        self.config.set('gcode', 'showpaths', "False")
-        if self.showpathsCB.Checked:
-            self.config.set('gcode', 'showpaths', "True")
-
-        self.config.set('gcode', 'cut_part_flag', "False")
-        if self.cutpartsCB.Checked:
-            self.config.set('gcode', 'cut_part_flag', "True")
-
-        type = str(self.dd.SelectedValue)
-
-        self.config.set('gcode', 'material', type)
-
-        for item in self.param_items:
-            tb = self.paramTBs[item]
-            self.config.set(type, item, tb.Text)
-
-
-    # Everything is loaded into self.config, write that into the document
-    #   separate function because it might get called by other functions
-    #   at some point
-    def WriteDocumentData(self):
-        for s in self.config.sections():
-            for row in self.config.items(s):
-                (key, entry) = row
-                rs.SetDocumentData(s, key, entry)
 
 
 if __name__ == '__main__':

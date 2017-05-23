@@ -1,8 +1,10 @@
 # Turn all selected items into parts. 
 
 import rhinoscriptsyntax as rs
+import Rhino.RhinoApp as app
 from System.Drawing import Color
 import sys
+import time
 
 def FindLargestCurve(objects):
     max_area = 0.0
@@ -87,6 +89,12 @@ if objects:
     for obj in objects:
         rs.ObjectLayer(obj, "PARTS")
 
+    rs.FlashObject(objects, style=True)
+    rs.UnselectObjects(objects)
+    app.Wait()
+    time.sleep(1)
+    rs.SelectObjects(objects)
+
     success = True
 
 if success:
@@ -94,4 +102,3 @@ if success:
 else:
     print "no part created"
 
-rs.UnselectAllObjects()
